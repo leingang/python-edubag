@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 from typing import List, Optional, Annotated
 
+from rich.progress import track
+
 from edubag import config
 from edubag.gradescope.roster import GradescopeRoster
 from .roster import AlbertRoster

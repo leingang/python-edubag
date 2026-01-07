@@ -134,7 +134,7 @@ class Gradebook(DataSource):
 
     @classmethod
     def from_gradescope_scoresheet(
-        cls, scoresheet: GradescopeScoresheet, item_name: str = None
+        cls, scoresheet: GradescopeScoresheet, item_name: str | None = None
     ):
         """
         Create a  Gradebook from a Gradescope scoresheet.
@@ -157,7 +157,7 @@ class Gradebook(DataSource):
             "Total Score": item_name if item_name else default_name,
         }
         logger.debug(f"{column_mapping=}")
-        gb.grades = scoresheet.scores[column_mapping.keys()].rename(columns=column_mapping)
+        gb.grades = scoresheet.scores[column_mapping.keys()].rename(columns=column_mapping) # type: ignore
         # drop the "@domain" part of the email addresses to match Brightspace usernames
         gb.grades["Username"] = gb.grades["Username"].str.split("@").str[0]
         # Keep DataSource.data in sync
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     import sys
 
     path = sys.argv[1]
-    gb = Gradebook.from_csv(path)
+    gb = Gradebook.from_csv(Path(path))
     if gb:
         print("\n--- Grades DataFrame ---")
         print(gb.grades.head())

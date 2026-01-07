@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 python-edubag = {file = ".", editable = true}
+rich = "*"
 
 [dev-packages]
 

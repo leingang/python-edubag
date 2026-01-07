@@ -15,7 +15,8 @@ classifiers = [
 license = {text = "MIT"}
 dependencies = [
   "typer",
-  "loguru"
+  "loguru",
+  "rich"
 ]
 requires-python = ">= 3.13"
 
