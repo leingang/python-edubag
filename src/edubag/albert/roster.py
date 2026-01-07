@@ -22,7 +22,7 @@ class AlbertRoster(object):
         DataFrame and class metadata into a dictionary.
 
         Args:
-            file_path (str): The path to the HTML file.
+            path (Path): The path to the HTML file.
 
         Returns:
             AlbertRoster: a roster
@@ -47,7 +47,10 @@ class AlbertRoster(object):
             # The key is the text of the 'b' tag, stripped of the colon
             key = tag.get_text().strip(": ")
             # The value is the text of the parent tag, with the key text removed
-            parent_text = tag.parent.get_text()
+            parent = tag.parent
+            if parent is None:
+                continue
+            parent_text = parent.get_text()
             value = parent_text.replace(tag.get_text(), "").strip()
             # Store in the metadata dictionary
             if key and value:
@@ -110,7 +113,7 @@ if __name__ == "__main__":
     import sys
 
     path = sys.argv[1]
-    roster = AlbertRoster.from_xls(path)
+    roster = AlbertRoster.from_xls(Path(path))
     if roster:
         print("--- Course Dictionary ---")
         for key, value in roster.course.items():
