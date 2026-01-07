@@ -18,7 +18,8 @@ dependencies = [
   "loguru",
   "rich",
   "bs4",
-  "pandas"
+  "pandas",
+  "pyyaml"
 ]
 requires-python = ">= 3.13"
 
@@ -37,7 +38,7 @@ changelog = "https://github.com/leingang/edubag/blob/master/changelog.md"
 homepage = "https://github.com/leingang/edubag"
 
 [project.scripts]
-edubag = "edubag.cli:app"
+edubag = "edubag:app"
 
 [tool.ty]
 # All rules are enabled as "error" by default; no need to specify unless overriding.

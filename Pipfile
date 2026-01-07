@@ -6,8 +6,8 @@ name = "pypi"
 [packages]
 rich = "*"
 bs4 = "*"
-python-edubag = {file = ".", editable = true}
 pyyaml = "*"
+python-edubag = {file = ".", editable = true}
 
 [dev-packages]
 
