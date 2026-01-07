@@ -4,8 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-python-edubag = {file = ".", editable = true}
 rich = "*"
+bs4 = "*"
+python-edubag = {file = ".", editable = true}
+pyyaml = "*"
 
 [dev-packages]
 
