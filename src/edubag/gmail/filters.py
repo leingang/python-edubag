@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 from loguru import logger
 
 from edubag.albert.roster import AlbertRoster
-from edubag.config import PROCESSED_DATA_DIR
 
 
 def email_query_strings(email_list: list[str], max_length: int = 1500) -> Iterator[str]:
@@ -137,15 +136,13 @@ def filter_from_rosters(
             roster = rosters[0]
             # Try to derive path from the roster if it has a pathstem attribute
             if hasattr(roster, "pathstem"):
-                output = (
-                    PROCESSED_DATA_DIR / "gmail" / "filters" / f"mailFilters_{roster.pathstem}.xml"
-                )
+                output = Path(f"mailFilters_{roster.pathstem}.xml")
             else:
                 # Fallback to a generic name
-                output = PROCESSED_DATA_DIR / "gmail" / "filters" / "mailFilters.xml"
+                output = Path("mailFilters.xml")
         else:
             # For multiple rosters, use a generic combined name
-            output = PROCESSED_DATA_DIR / "gmail" / "filters" / "mailFilters_combined.xml"
+            output = Path("mailFilters_combined.xml")
 
     # Ensure output directory exists
     output.parent.mkdir(parents=True, exist_ok=True)

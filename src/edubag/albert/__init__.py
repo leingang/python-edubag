@@ -4,7 +4,6 @@ from typing import List, Optional, Annotated
 
 from rich.progress import track
 
-from edubag import config
 from edubag.gradescope.roster import GradescopeRoster
 from .roster import AlbertRoster
 
@@ -53,30 +52,11 @@ def xls2csv(
 
         if save:
             if effective_output is None:
-                # construct output path based on input path
-                # If the input path comes from data/raw/albert/roster/.../foo.XLS,
-                # the output path should go to data/interim/albert/roster/.../pathstem.csv
-                # where `pathstem` is the roster's pathstem property.
-                try:
-                    relative_path = p.resolve().relative_to(
-                        config.RAW_DATA_DIR / "albert" / "roster"
-                    )
-                    effective_output = (
-                        config.INTERIM_DATA_DIR
-                        / "albert"
-                        / "roster"
-                        / relative_path.with_stem(roster.pathstem).with_suffix(".csv")
-                    )
-                    effective_output.parent.mkdir(parents=True, exist_ok=True)
-                    typer.echo(f"Writing CSV roster to {effective_output}")
-                except ValueError:
-                    raise typer.BadParameter(
-                        f"Cannot derive output path for input file {p}. "
-                        "Please specify an explicit --output path."
-                    )
-            else:
-                effective_output.parent.mkdir(parents=True, exist_ok=True)
-                typer.echo(f"Writing CSV roster to {effective_output}")
+                raise typer.BadParameter(
+                    "Please specify --output when using --save."
+                )
+            effective_output.parent.mkdir(parents=True, exist_ok=True)
+            typer.echo(f"Writing CSV roster to {effective_output}")
             roster.to_csv(effective_output)
         else:
             roster.to_csv(sys.stdout)

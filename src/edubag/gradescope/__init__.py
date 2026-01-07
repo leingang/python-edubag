@@ -1,5 +1,3 @@
-from edubag import config  # noqa: F401
-
 from pathlib import Path
 from typing import List, Annotated
 import typer
@@ -40,9 +38,9 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
     `input` can be either a zip file containing versioned assignment scores
     or a CSV file for unversioned assignments.
 
-    If no `output` path is provided, it is derived from the `input` path
-    by replacing `config.RAW_DATA_DIR/gradescope/grades` with
-    `config.INTERIM_DATA_DIR/brightspace/grades`
+    If no `output` path is provided, the output file is created in the same
+    directory as the input file, with spaces in the filename replaced by
+    underscores and the suffix changed to `.csv`.
 
     If `by_section` is True, separate gradebook files are created for each section.
 
@@ -54,16 +52,7 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
     else:
         raise ValueError("Input file must be a Gradescope scores zip or CSV file.")
     if output is None:
-        relative_path = input.resolve().relative_to(
-            config.RAW_DATA_DIR / "gradescope" / "grades"
-        )
-        output = (
-            config.INTERIM_DATA_DIR
-            / "brightspace"
-            / "grades"
-            / relative_path.with_stem(scoresheet.name.replace(" ", "_"))
-            .with_suffix(".csv")        
-        )
+        output = input.with_name(scoresheet.name.replace(" ", "_")).with_suffix(".csv")
     output.parent.mkdir(parents=True, exist_ok=True)
     if by_section:
         # Use SectionedScoresheet to split by section (handles NaN students gracefully)

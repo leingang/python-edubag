@@ -7,7 +7,6 @@ import yaml
 import re
 from loguru import logger
 
-from edubag import config  # noqa: F401
 from edubag import app as main_app
 from edubag.aggregator import EngagementAggregator
 from edubag.brightspace.attendance import AttendanceData
@@ -59,11 +58,8 @@ def build_attendance_gradebook(
 	if output is None:
 		today = pd.Timestamp.today().strftime("%Y-%m-%d")
 		output = (
-			config.PROCESSED_DATA_DIR
-			/ "brightspace"
-			/ "grades"
-			/ today
-			/ "attendance.csv"
+			attendance_dir
+			/ f"attendance_gradebook_{today}.csv"
 		)
 	output.parent.mkdir(parents=True, exist_ok=True)
 	logger.info(f"Writing Brightspace attendance gradebook to {output}")
@@ -276,13 +272,7 @@ def build_engagement_gradebook(
 	# Write output
 	if output is None:
 		today = pd.Timestamp.today().strftime("%Y-%m-%d")
-		output = (
-			config.PROCESSED_DATA_DIR
-			/ "brightspace"
-			/ "grades"
-			/ today
-			/ "gradebook_with_engagement.csv"
-		)
+		output = base_gradebook.parent / f"gradebook_with_engagement_{today}.csv"
 	output.parent.mkdir(parents=True, exist_ok=True)
 	
 	logger.info(f"Writing engagement gradebook to {output}")
@@ -404,8 +394,8 @@ def aggregate_from_config(
 	cfg = _load_yaml_config(config_file)
 	
 	# Determine base directory for relative paths
-	base_dir = config_file.parent.parent if config_file.is_absolute() else config.PROJ_ROOT
-	
+	base_dir = config_file.parent.resolve()
+
 	# Load data sources
 	logger.info("\n📚 Loading data sources...")
 	sources = {}
