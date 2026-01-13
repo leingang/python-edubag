@@ -77,3 +77,15 @@ class Term(object):
     def __str__(self) -> str:
         """String representation of the Term."""
         return f"{self.season.name} {self.year}"
+    
+    def __cmp__(self, other: "Term") -> int:
+        """
+        Compare two Term objects based on their term codes.
+        Since the code increases by year and season, this will work correctly.
+
+        Args:
+            other (Term): Another Term object to compare with.
+        Returns:
+            int: Negative if self < other, zero if self == other, positive if self > other.
+        """
+        return self.code - other.code
