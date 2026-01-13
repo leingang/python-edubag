@@ -73,3 +73,7 @@ class Term(object):
             + (self.year % 100) * 10
             + self.season.value
         )
+    
+    def __str__(self) -> str:
+        """String representation of the Term."""
+        return f"{self.season.name} {self.year}"
