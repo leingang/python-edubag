@@ -20,7 +20,8 @@ dependencies = [
   "bs4",
   "pandas",
   "pyyaml",
-  "playwright"
+  "playwright",
+  "html5lib"
 ]
 requires-python = ">= 3.13"
 

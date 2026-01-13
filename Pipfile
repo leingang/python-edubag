@@ -5,10 +5,11 @@ name = "pypi"
 
 [packages]
 rich = "*"
-bs4 = "*"
 pyyaml = "*"
 python-edubag = {file = ".", editable = true}
 playwright = "*"
+bs4 = "*"
+html5lib = "*"
 
 [dev-packages]
 

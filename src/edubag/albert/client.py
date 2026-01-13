@@ -75,6 +75,11 @@ class AlbertClient:
         Returns:
             List[Path]: List of paths to the downloaded roster files.
         """
+        # Check if authentication state exists; if not, authenticate first
+        if not self.auth_state_path.exists():
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            self.authenticate(headless=False)
+        
         result_paths = []
         with sync_playwright() as p:
             # Change to headless=True for non-UI mode
@@ -111,6 +116,9 @@ class AlbertClient:
                     # Clicking the link opens a page that immediately redirects;
                     # wait for the redirect to complete
                     roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
+                    section_name = roster_page.locator("#DERIVED_SSR_FC_CLASS_SECTION").text_content()
+                    section_name = section_name.strip() if section_name else ""
+                    logger.info(f"Processing roster for section: {section_name}")
                     roster_page.get_by_label("Print/Download Options").select_option("EXL")
                     with roster_page.expect_download() as download_info:
                         with roster_page.expect_popup():
@@ -129,7 +137,7 @@ class AlbertClient:
                 # Check if there's a next page button and click it
                 next_button = page.locator(".isFSA_PNext")
                 if next_button.count() > 0 and next_button.is_visible():
-                    logger.info("Navigating to next page of courses")
+                    logger.debug("Navigating to next page of courses")
                     next_button.click()
                     page.wait_for_load_state("networkidle")
                 else:

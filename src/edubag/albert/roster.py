@@ -88,7 +88,7 @@ class AlbertRoster(object):
         subject = self.course.get("Subject Code", "UNKNOWN")
         catalog = self.course.get("Catalog Number", "000")
         section = self.course.get("Section", "000")
-        term = Term.from_name(self.course.get("Semester", "Fall 2025")).code
+        term = Term.from_name(self.course.get("Semester", "UNKNOWN")).code
         return f"{subject}_{catalog}_{section}_{term}"
 
     def to_csv(self, path_or_buf):
