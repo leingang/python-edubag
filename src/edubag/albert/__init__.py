@@ -6,6 +6,7 @@ from rich.progress import track
 
 from edubag.gradescope.roster import GradescopeRoster
 from .roster import AlbertRoster
+from .client import authenticate as client_authenticate, fetch_and_save_rosters as client_fetch_and_save_rosters
 
 import typer
 from edubag import app as main_app
@@ -103,5 +104,50 @@ def albert_xls_roster_to_gradescope_csv_roster(
     merged_roster.to_csv(output_path)
 
 
+# Nested Typer app for web client automation
+client_app = typer.Typer(help="Automate Albert web client interactions")
+
+
+@client_app.command()
+def authenticate(
+    base_url: Annotated[Optional[str], typer.Option(help="Override Albert base URL")] = None,
+    auth_state_path: Annotated[Optional[Path], typer.Option(help="Path to save auth state JSON")] = None,
+    headless: Annotated[bool, typer.Option(help="Run browser headless for login")] = False,
+) -> None:
+    """Open Albert for login and persist authentication state."""
+    ok = client_authenticate(
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+        headless=headless,
+    )
+    if ok:
+        typer.echo("Authentication state saved.")
+    else:
+        raise typer.Exit(code=1)
+
+
+@client_app.command("fetch-rosters")
+def fetch_rosters(
+    course_name: Annotated[str, typer.Argument(help="Course name to match in Albert")],
+    term: Annotated[str, typer.Argument(help="Term, e.g., 'Fall 2025'")],
+    save_path: Annotated[Optional[Path], typer.Option(help="Directory to save roster files")] = None,
+    headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
+    base_url: Annotated[Optional[str], typer.Option(help="Override Albert base URL")] = None,
+    auth_state_path: Annotated[Optional[Path], typer.Option(help="Path to stored auth state JSON")] = None,
+) -> None:
+    """Fetch class rosters for a course offering and save files."""
+    paths = client_fetch_and_save_rosters(
+        course_name=course_name,
+        term=term,
+        save_path=save_path,
+        headless=headless,
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+    )
+    for p in paths:
+        typer.echo(str(p))
+
+
 # Register the albert app as a subcommand with the main app
 main_app.add_typer(app, name="albert")
+app.add_typer(client_app, name="client")

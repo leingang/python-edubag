@@ -19,7 +19,8 @@ dependencies = [
   "rich",
   "bs4",
   "pandas",
-  "pyyaml"
+  "pyyaml",
+  "playwright"
 ]
 requires-python = ">= 3.13"
 
