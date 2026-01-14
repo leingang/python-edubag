@@ -267,6 +267,14 @@
             "markers": "python_version >= '3.9'",
             "version": "==2.3.3"
         },
+        "platformdirs": {
+            "hashes": [
+                "sha256:61d5cdcc6065745cdd94f0f878977f8de9437be93de97c1c12f853c9c0cdcbda",
+                "sha256:d03afa3963c806a9bed9d5125c8f4cb2fdaf74a55ab60e5d59b3fde758104d31"
+            ],
+            "markers": "python_version >= '3.10'",
+            "version": "==4.5.1"
+        },
         "playwright": {
             "hashes": [
                 "sha256:1dd93b265688da46e91ecb0606d36f777f8eadcf7fbef12f6426b20bf0c9137c",

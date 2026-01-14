@@ -6,6 +6,7 @@ from datetime import date
 
 from playwright.sync_api import sync_playwright
 from loguru import logger
+import platformdirs
 
 from edubag.albert.term import Term
 
@@ -14,11 +15,18 @@ class AlbertClient:
     """Client to interact with the Albert learning platform."""
 
     base_url = "https://sis.portal.nyu.edu/psp/ihprod/EMPLOYEE/EMPL/?cmd=start"
-    auth_state_path = Path("auth.json")
+    
+    @staticmethod
+    def _default_auth_state_path() -> Path:
+        """Get the platform-appropriate default path for the auth state file."""
+        cache_dir = platformdirs.user_cache_dir("edubag", "NYU")
+        return Path(cache_dir) / "albert_auth.json"
 
     def __init__(
         self, base_url: str | None = None, auth_state_path: Path | None = None
     ):
+        else:
+            self.auth_state_path = self._default_auth_state_path()
         """Initializes the AlbertClient."""
         if base_url is not None:
             self.base_url = base_url

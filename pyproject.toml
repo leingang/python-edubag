@@ -21,7 +21,8 @@ dependencies = [
   "pandas",
   "pyyaml",
   "playwright",
-  "html5lib"
+  "html5lib",
+  "platformdirs"
 ]
 requires-python = ">= 3.13"
 
