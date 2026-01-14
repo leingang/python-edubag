@@ -19,19 +19,20 @@ class AlbertClient:
     @staticmethod
     def _default_auth_state_path() -> Path:
         """Get the platform-appropriate default path for the auth state file."""
-        cache_dir = platformdirs.user_cache_dir("edubag", "NYU")
-        return Path(cache_dir) / "albert_auth.json"
+        cache_dir = Path(platformdirs.user_cache_dir("edubag", "NYU"))
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / "albert_auth.json"
 
     def __init__(
         self, base_url: str | None = None, auth_state_path: Path | None = None
     ):
-        else:
-            self.auth_state_path = self._default_auth_state_path()
         """Initializes the AlbertClient."""
         if base_url is not None:
             self.base_url = base_url
         if auth_state_path is not None:
             self.auth_state_path = auth_state_path
+        else:
+            self.auth_state_path = self._default_auth_state_path()
 
     def authenticate(self, headless=False) -> bool:
         """Log into Albert and save the authentication state.
@@ -58,7 +59,7 @@ class AlbertClient:
             )  # adjust to post-login URL
 
             context.storage_state(path=self.auth_state_path)
-            print("Authentication state saved.")
+            logger.debug(f"Authentication state saved at {self.auth_state_path}")
 
             browser.close()
         return True
