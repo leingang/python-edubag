@@ -76,6 +76,9 @@ class AlbertRoster(object):
         tables = pd.read_html(io.StringIO(html_content))
         if tables:
             parsed_data["dataframe"] = tables[0]
+            # Drop the "Counter" column if it exists
+            if "Counter" in parsed_data["dataframe"].columns:
+                parsed_data["dataframe"] = parsed_data["dataframe"].drop(columns=["Counter"])
 
         obj = AlbertRoster()
         obj.course = parsed_data["metadata"]
