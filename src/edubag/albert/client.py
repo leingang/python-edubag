@@ -64,34 +64,20 @@ class AlbertClient:
             browser.close()
         return True
 
-    def fetch_and_save_rosters(
+    def _fetch_rosters_session(
         self,
         course_name: str,
         term: str | Term,
         save_path: Path | None = None,
         headless: bool = True,
     ) -> list[Path]:
-        """Fetch from the network and save to disk the class rosters for a given
-        course offering.
-
-        Args:
-          * course_name (str): The name of the course. 
-          * term (str | Term): The term of the course. 
-          * save_path (Path | None): Directory to save the rosters. If None,
-            uses default directory. 
-          * headless (bool): Whether to run the browser in headless mode.
-
-        Returns:
-            List[Path]: List of paths to the downloaded roster files.
-        """
-        # Check if authentication state exists; if not, authenticate first
-        if not self.auth_state_path.exists():
-            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
-            self.authenticate(headless=False)
+        """Internal method to fetch rosters in a single browser session.
         
+        Raises TimeoutError if the session times out.
+        Raises RuntimeError if authentication has expired.
+        """
         result_paths = []
         with sync_playwright() as p:
-            # Change to headless=True for non-UI mode
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(
                 storage_state=self.auth_state_path, accept_downloads=True
@@ -99,13 +85,29 @@ class AlbertClient:
             page = context.new_page()
 
             page.goto(self.base_url)
-            if "login" in page.url:
-                logger.error("Not authenticated. Please run authenticate() first.")
-                return []
-            page.locator("#IS_FSA_SchWrp").get_by_role("link", name=str(term)).click()
-            # https://playwright.dev/python/docs/api/class-page#page-wait-for-load-state
-            # says this is discouraged, but I haven't found a better way to ensure the
-            # page is loaded
+            if "login" in page.url or "errorCode" in page.url:
+                browser.close()
+                raise RuntimeError("Authentication session expired.")
+            
+            try:
+                page.locator("#IS_FSA_SchWrp").get_by_role("link", name=str(term)).click()
+            except Exception as e:
+                # The click failed - check if we got redirected to login
+                error_message = str(e)
+                current_url = page.url
+                logger.debug(f"Click failed. Current URL: {current_url}")
+                logger.debug(f"Error message: {error_message}")
+                # Check both the current URL and the error message for login/auth failures
+                if ("login" in current_url or "errorCode" in current_url or 
+                    "errorCode=105" in error_message or "cmd=login" in error_message):
+                    logger.info("Detected authentication failure in error message")
+                    browser.close()
+                    raise RuntimeError("Authentication session expired during navigation.") from e
+                # If not a login redirect, re-raise the original exception
+                logger.debug("Not an auth error, re-raising original exception")
+                browser.close()
+                raise
+            
             page.wait_for_load_state("networkidle")
 
             # Paginate through all course listing pages
@@ -122,8 +124,6 @@ class AlbertClient:
                     with page.expect_popup() as popup_info:
                         course.get_by_role("link", name="Class Roster").click()
                     roster_page = popup_info.value
-                    # Clicking the link opens a page that immediately redirects;
-                    # wait for the redirect to complete
                     roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
                     section_name = roster_page.locator("#DERIVED_SSR_FC_CLASS_SECTION").text_content()
                     section_name = section_name.strip() if section_name else ""
@@ -150,11 +150,51 @@ class AlbertClient:
                     next_button.click()
                     page.wait_for_load_state("networkidle")
                 else:
-                    # No more pages, exit the loop
                     break
             
             browser.close()
         return result_paths
+
+    def fetch_and_save_rosters(
+        self,
+        course_name: str,
+        term: str | Term,
+        save_path: Path | None = None,
+        headless: bool = True,
+    ) -> list[Path]:
+        """Fetch from the network and save to disk the class rosters for a given
+        course offering.
+
+        Args:
+          * course_name (str): The name of the course. 
+          * term (str | Term): The term of the course. 
+          * save_path (Path | None): Directory to save the rosters. If None,
+            uses default directory. 
+          * headless (bool): Whether to run the browser in headless mode.
+
+        Returns:
+            List[Path]: List of paths to the downloaded roster files.
+        """
+        # Check if authentication state exists; if not, authenticate first
+        if not self.auth_state_path.exists():
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            self.authenticate(headless=False)
+        
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                return self._fetch_rosters_session(course_name, term, save_path, headless)
+            except (TimeoutError, RuntimeError) as e:
+                if attempt < max_retries:
+                    logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(headless=False)
+                else:
+                    logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
+                    raise
+        return []
 
 
 # Convenience module-level functions for CLI and simple scripting
