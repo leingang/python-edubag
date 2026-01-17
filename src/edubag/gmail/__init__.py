@@ -1,12 +1,14 @@
 from pathlib import Path
 from typing import Annotated, Optional
+import sys
+import xml.etree.ElementTree as ET
 
 from loguru import logger
 import typer
 
 from edubag import app as main_app
 from edubag.albert.roster import AlbertRoster
-from edubag.gmail.filters import filter_from_rosters
+from edubag.gmail.filters import generate_filter_xml
 
 # Create a local Typer app for gmail subcommands
 app = typer.Typer(help="Gmail filter management commands")
@@ -23,7 +25,7 @@ def filter_from_roster_command(
     ] = None,
     output: Annotated[
         Optional[Path],
-        typer.Option(help="Path to save the Gmail filter XML file."),
+        typer.Option(help="Path to save the Gmail filter XML file. If not set, output to STDOUT."),
     ] = None,
 ):
     """Create a Gmail filter to label senders from class roster(s).
@@ -31,7 +33,7 @@ def filter_from_roster_command(
     Accepts one or more Albert roster Excel files and generates a Gmail filter XML file
     that can be imported into Gmail to automatically label emails from students on the roster(s).
 
-    If no output path is specified, the filter will be saved to the processed data directory.
+    If no output path is specified, the filter will be printed to STDOUT.
     """
     # Load all rosters
     rosters = []
@@ -40,13 +42,21 @@ def filter_from_roster_command(
         rosters.append(roster)
         logger.info(f"Loaded roster from {path}")
 
-    # Generate the filter
-    filter_from_rosters(rosters, label=label, output=output)
+    # Generate the filter XML
+    feed = generate_filter_xml(rosters, label=label)
 
-    if output:
-        logger.info(f"Gmail filter XML file saved to {output}")
+    if output is None:
+        # Write to STDOUT
+        tree = ET.ElementTree(feed)
+        ET.indent(tree, space="    ", level=0)
+        tree.write(sys.stdout.buffer, encoding="UTF-8", xml_declaration=True)
     else:
-        logger.info("Gmail filter XML file saved to processed data directory")
+        # Write to file
+        output.parent.mkdir(parents=True, exist_ok=True)
+        tree = ET.ElementTree(feed)
+        ET.indent(tree, space="    ", level=0)
+        tree.write(output, encoding="UTF-8", xml_declaration=True)
+        logger.info(f"Gmail filter XML file saved to {output}")
 
 
 # Register the gmail app as a subcommand with the main app

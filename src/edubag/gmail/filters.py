@@ -39,32 +39,19 @@ def email_query_strings(email_list: list[str], max_length: int = 1500) -> Iterat
         yield current_string
 
 
-def filter_from_roster(
-    roster: AlbertRoster, label: Optional[str] = None, output: Optional[Path] = None
-) -> None:
-    """Create a Gmail filter to label senders on a class roster
-
-    Args:
-        roster (AlbertRoster): the roster object
-        label (string): how they should be labeled. If not set, create a label from the roster course data.
-        output (path): where to save the filter. If not set, derive from processed data dir
-    """
-    filter_from_rosters([roster], label=label, output=output)
-
-
-def filter_from_rosters(
-    rosters: list[AlbertRoster], label: Optional[str] = None, output: Optional[Path] = None
-) -> None:
-    """Create a Gmail filter to label senders from multiple class rosters
-
-    Creates a single filter file with separate entries for each roster.
+def generate_filter_xml(
+    rosters: list[AlbertRoster], label: Optional[str] = None
+) -> ET.Element:
+    """Generate a Gmail filter XML feed from roster(s)
 
     Args:
         rosters (list[AlbertRoster]): list of roster objects
         label (string): how they should be labeled. If not set and there's a single roster,
                        create a label from the roster course data. For multiple rosters without
                        a label, each roster gets its own label.
-        output (path): where to save the filter. If not set, derive from processed data dir
+    
+    Returns:
+        ET.Element: The root <feed> element of the Gmail filter XML
     """
     if not rosters:
         raise ValueError("At least one roster must be provided")
@@ -128,6 +115,39 @@ def filter_from_rosters(
                 f"{{{apps_ns}}}property",
                 attrib={"name": "label", "value": roster_label},
             )
+    
+    return feed
+
+
+def filter_from_roster(
+    roster: AlbertRoster, label: Optional[str] = None, output: Optional[Path] = None
+) -> None:
+    """Create a Gmail filter to label senders on a class roster
+
+    Args:
+        roster (AlbertRoster): the roster object
+        label (string): how they should be labeled. If not set, create a label from the roster course data.
+        output (path): where to save the filter. If not set, derive from processed data dir
+    """
+    filter_from_rosters([roster], label=label, output=output)
+
+
+def filter_from_rosters(
+    rosters: list[AlbertRoster], label: Optional[str] = None, output: Optional[Path] = None
+) -> None:
+    """Create a Gmail filter to label senders from multiple class rosters
+
+    Creates a single filter file with separate entries for each roster.
+
+    Args:
+        rosters (list[AlbertRoster]): list of roster objects
+        label (string): how they should be labeled. If not set and there's a single roster,
+                       create a label from the roster course data. For multiple rosters without
+                       a label, each roster gets its own label.
+        output (path): where to save the filter. If not set, save to current directory with
+                       a name derived from the roster(s).
+    """
+    feed = generate_filter_xml(rosters, label=label)
 
     # Determine output path if not provided
     if output is None:
