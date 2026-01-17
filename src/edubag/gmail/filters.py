@@ -90,7 +90,7 @@ def generate_filter_xml(
             roster_label = label
 
         # Get email addresses from the roster
-        addresses = roster.students["Email Address"]
+        addresses = roster.students["Email Address"].tolist()
 
         # Create entries for this roster's emails
         for filter_value in email_query_strings(addresses):
