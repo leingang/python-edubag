@@ -34,12 +34,12 @@ class AlbertClient:
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, headless=False) -> bool:
+    def authenticate(self, username: str | None = None, password: str | None = None, headless=False) -> bool:
         """Log into Albert and save the authentication state.
 
-        You will need to manually complete the login and MFA process.
-
         Args:
+            username (str | None): NetID to log in with. If None, user must enter manually in browser.
+            password (str | None): Password for login. If None, user must enter manually in browser.
             headless (bool): Whether to run the browser in headless mode.
 
         Returns:
@@ -53,7 +53,27 @@ class AlbertClient:
 
             page.goto(self.base_url)
 
-            print("Log in manually and complete MFA.")
+            # Wait for page to load and form to appear instead of URL (SAML can redirect)
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+            # Wait for the username input field to appear and be visible
+            page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
+            
+            if username is not None:
+                page.locator("input[type='email']").fill(username)
+                page.get_by_role("button", name="Next").click()
+                
+                if password is not None:
+                    # Wait for password field to appear
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
+                    page.locator("input[type='password']").fill(password)
+                    page.get_by_role("button", name="Sign in").click()
+                    page.get_by_role("button", name="Approve with MFA (Duo)‎ You").click()
+                else:
+                    print("Please enter your password in the browser window and complete MFA.")
+            else:
+                print("Please enter your username and password in the browser window, then complete MFA.")
+            
             page.wait_for_url(
                 "**/h/?tab=IS_FSA_TAB", timeout=60000
             )  # adjust to post-login URL
@@ -160,6 +180,8 @@ class AlbertClient:
         course_name: str,
         term: str | Term,
         save_path: Path | None = None,
+        username: str | None = None,
+        password: str | None = None,
         headless: bool = True,
     ) -> list[Path]:
         """Fetch from the network and save to disk the class rosters for a given
@@ -169,7 +191,9 @@ class AlbertClient:
           * course_name (str): The name of the course. 
           * term (str | Term): The term of the course. 
           * save_path (Path | None): Directory to save the rosters. If None,
-            uses default directory. 
+            uses default directory.
+          * username (str | None): NetID to log in with. If None, user must enter manually.
+          * password (str | None): Password for login. If None, user must enter manually.
           * headless (bool): Whether to run the browser in headless mode.
 
         Returns:
@@ -178,7 +202,7 @@ class AlbertClient:
         # Check if authentication state exists; if not, authenticate first
         if not self.auth_state_path.exists():
             logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
-            self.authenticate(headless=False)
+            self.authenticate(username=username, password=password, headless=False)
         
         max_retries = 1
         for attempt in range(max_retries + 1):
@@ -190,7 +214,7 @@ class AlbertClient:
                     logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    self.authenticate(headless=False)
+                    self.authenticate(username=username, password=password, headless=False)
                 else:
                     logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
@@ -199,6 +223,8 @@ class AlbertClient:
 
 # Convenience module-level functions for CLI and simple scripting
 def authenticate(
+    username: str | None = None,
+    password: str | None = None,
     base_url: str | None = None,
     auth_state_path: Path | None = None,
     headless: bool = False,
@@ -206,6 +232,8 @@ def authenticate(
     """Authenticate to Albert using Playwright and persist session state.
 
     Args:
+        username: NetID to log in with. If None, user must enter manually in browser.
+        password: Password for login. If None, user must enter manually in browser.
         base_url: Override base URL for Albert.
         auth_state_path: Path to save authentication state JSON.
         headless: Run browser headless; default False for interactive login.
@@ -214,13 +242,15 @@ def authenticate(
         True on success, False otherwise.
     """
     client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.authenticate(headless=headless)
+    return client.authenticate(username=username, password=password, headless=headless)
 
 
 def fetch_and_save_rosters(
     course_name: str,
     term: str | Term,
     save_path: Path | None = None,
+    username: str | None = None,
+    password: str | None = None,
     headless: bool = True,
     base_url: str | None = None,
     auth_state_path: Path | None = None,
@@ -231,6 +261,8 @@ def fetch_and_save_rosters(
         course_name: The course name to match in Albert.
         term: A term string (e.g., "Fall 2025") or `Term`.
         save_path: Directory to save roster files; defaults to CWD.
+        username: NetID to log in with. If None, user must enter manually.
+        password: Password for login. If None, user must enter manually.
         headless: Run browser headless; default True for automation.
         base_url: Override base URL for Albert.
         auth_state_path: Path to stored authentication state JSON.
@@ -243,5 +275,7 @@ def fetch_and_save_rosters(
         course_name=course_name,
         term=term,
         save_path=save_path,
+        username=username,
+        password=password,
         headless=headless,
     )
