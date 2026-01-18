@@ -188,26 +188,55 @@ class AlbertClient:
         for element in elements:
             # Find the label within this element
             label_element = element.locator(".ps-label")
-            if label_element.count() > 0:
-                label_text = label_element.text_content()
-                if label_text:
-                    label_text = label_text.strip()
-                    # Find the value within this element
-                    value_element = element.locator(".ps_box-value")
+            if label_element.count() == 0:
+                continue
+
+            label_text = label_element.first.text_content()
+            if not label_text or not label_text.strip():
+                continue
+
+            label_text = label_text.strip()
+
+            # Find the value within this element - try ps_box-value first
+            value_element = element.locator(".ps_box-value")
+            value_text = None
+
+            if value_element.count() > 0:
+                value_text = value_element.first.text_content()
+                if value_text is not None:
+                    value_text = value_text.strip()
+
+            # If no ps_box-value found or it's None, try ps_box-value-readonly or other variations
+            if value_text is None:
+                # Try alternative class names
+                for class_name in [".ps_box-value-readonly", "[id*='$span']"]:
+                    value_element = element.locator(class_name)
                     if value_element.count() > 0:
-                        value_text = value_element.text_content()
-                        if value_text:
+                        value_text = value_element.first.text_content()
+                        if value_text is not None:
                             value_text = value_text.strip()
-                            # Normalize the label to snake_case
-                            normalized_label = _normalize_label(label_text)
-                            # Try to convert to integer if the value is a clean integer string.
-                            # Values like '123ABC' or '12.5' will be kept as strings.
-                            # This is intentional to preserve data as-is unless clearly numeric.
-                            try:
-                                value = int(value_text)
-                            except ValueError:
-                                value = value_text
-                            class_details[normalized_label] = value
+                            break
+
+            # If we still don't have a value, skip this element
+            if value_text is None:
+                continue
+
+            # Normalize the label to snake_case
+            normalized_label = _normalize_label(label_text)
+
+            # Try to convert to integer if the value is a clean integer string.
+            # Values like '123ABC' or '12.5' will be kept as strings.
+            # This is intentional to preserve data as-is unless clearly numeric.
+            # Empty strings are kept as-is.
+            if value_text:
+                try:
+                    value = int(value_text)
+                except ValueError:
+                    value = value_text
+            else:
+                value = value_text
+
+            class_details[normalized_label] = value
 
         roster_page.close()
         return class_details
