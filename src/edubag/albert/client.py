@@ -3,8 +3,9 @@
 from pathlib import Path
 import re
 from datetime import date
+from typing import Generator
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Page, Locator
 from loguru import logger
 import platformdirs
 
@@ -84,6 +85,69 @@ class AlbertClient:
             browser.close()
         return True
 
+    def _get_courses_paginated(self, page: Page, course_name: str) -> Generator[Locator, None, None]:
+        """Iterator that yields course locators across all pages with pagination.
+        
+        Args:
+            page: The Playwright page object.
+            course_name: The name of the course to filter by.
+            
+        Yields:
+            Course locators matching the course name across all pages.
+        """
+        while True:
+            courses = (
+                page.locator(
+                    "div.isFSA_SchCrsWrp",
+                    has=page.get_by_role("heading", name=course_name),
+                )
+                .locator("visible=true")
+                .all()
+            )
+            for course in courses:
+                yield course
+            
+            # Check if there's a next page button and click it
+            next_button = page.locator(".isFSA_PNext")
+            if next_button.count() > 0 and next_button.is_visible():
+                logger.debug("Navigating to next page of courses")
+                next_button.click()
+                page.wait_for_load_state("networkidle")
+            else:
+                break
+
+    def _save_roster_for_course(self, course: Locator, save_path: Path | None = None) -> Path:
+        """Process a course and save its roster.
+        
+        Args:
+            course: A course locator element.
+            save_path: Directory to save the roster. If None, saves to current directory.
+            
+        Returns:
+            Path to the saved roster file.
+        """
+        with course.page.expect_popup() as popup_info:
+            course.get_by_role("link", name="Class Roster").click()
+        roster_page = popup_info.value
+        roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
+        section_name = roster_page.locator("#DERIVED_SSR_FC_CLASS_SECTION").text_content()
+        section_name = section_name.strip() if section_name else ""
+        logger.info(f"Processing roster for section: {section_name}")
+        roster_page.get_by_label("Print/Download Options").select_option("EXL")
+        with roster_page.expect_download() as download_info:
+            with roster_page.expect_popup():
+                roster_page.get_by_role("button", name="Generate").click()
+        download = download_info.value
+        if save_path is not None:
+            save_path.mkdir(parents=True, exist_ok=True)
+            download_file_path = save_path / download.suggested_filename
+        else:
+            download_file_path = Path(download.suggested_filename)
+        logger.info(f"Downloading roster to {download_file_path}")
+        download.save_as(download_file_path)
+        roster_page.close()
+        return download_file_path
+
     def _fetch_rosters_session(
         self,
         course_name: str,
@@ -130,47 +194,10 @@ class AlbertClient:
             
             page.wait_for_load_state("networkidle")
 
-            # Paginate through all course listing pages
-            while True:
-                courses = (
-                    page.locator(
-                        "div.isFSA_SchCrsWrp",
-                        has=page.get_by_role("heading", name=course_name),
-                    )
-                    .locator("visible=true")
-                    .all()
-                )
-                for course in courses:
-                    with page.expect_popup() as popup_info:
-                        course.get_by_role("link", name="Class Roster").click()
-                    roster_page = popup_info.value
-                    roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
-                    section_name = roster_page.locator("#DERIVED_SSR_FC_CLASS_SECTION").text_content()
-                    section_name = section_name.strip() if section_name else ""
-                    logger.info(f"Processing roster for section: {section_name}")
-                    roster_page.get_by_label("Print/Download Options").select_option("EXL")
-                    with roster_page.expect_download() as download_info:
-                        with roster_page.expect_popup():
-                            roster_page.get_by_role("button", name="Generate").click()
-                    download = download_info.value
-                    if save_path is not None:
-                        save_path.mkdir(parents=True, exist_ok=True)
-                        download_file_path = save_path / download.suggested_filename
-                    else:
-                        download_file_path = Path(download.suggested_filename)
-                    logger.info(f"Downloading roster to {download_file_path}")
-                    download.save_as(download_file_path)
-                    result_paths.append(download_file_path)
-                    roster_page.close()
-                
-                # Check if there's a next page button and click it
-                next_button = page.locator(".isFSA_PNext")
-                if next_button.count() > 0 and next_button.is_visible():
-                    logger.debug("Navigating to next page of courses")
-                    next_button.click()
-                    page.wait_for_load_state("networkidle")
-                else:
-                    break
+            # Process all courses across all pages
+            for course in self._get_courses_paginated(page, course_name):
+                download_path = self._save_roster_for_course(course, save_path)
+                result_paths.append(download_path)
             
             browser.close()
         return result_paths
