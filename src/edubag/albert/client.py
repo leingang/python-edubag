@@ -21,9 +21,9 @@ def _normalize_label(label: str) -> str:
     Returns:
         A snake_case version of the label.
     """
-    # Convert to lowercase and replace spaces/special chars with underscores
-    normalized = re.sub(r"[^\w\s]", "", label.lower())
-    normalized = re.sub(r"\s+", "_", normalized.strip())
+    # Convert to lowercase and replace non-word characters with underscores
+    # Strip leading/trailing underscores
+    normalized = re.sub(r"[^\w]+", "_", label.lower()).strip("_")
     return normalized
 
 
@@ -200,7 +200,9 @@ class AlbertClient:
                             value_text = value_text.strip()
                             # Normalize the label to snake_case
                             normalized_label = _normalize_label(label_text)
-                            # Try to convert to integer if it looks like one
+                            # Try to convert to integer if the value is a clean integer string.
+                            # Values like '123ABC' or '12.5' will be kept as strings.
+                            # This is intentional to preserve data as-is unless clearly numeric.
                             try:
                                 value = int(value_text)
                             except ValueError:
