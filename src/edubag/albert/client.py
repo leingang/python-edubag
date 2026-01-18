@@ -1,22 +1,37 @@
 """Module to automate interactions with the Albert learning platform."""
 
-from pathlib import Path
+import json
 import re
-from datetime import date
-from typing import Generator
+from collections.abc import Generator
+from pathlib import Path
 
-from playwright.sync_api import sync_playwright, Page, Locator
-from loguru import logger
 import platformdirs
+from loguru import logger
+from playwright.sync_api import Locator, Page, sync_playwright
 
 from edubag.albert.term import Term
+
+
+def _normalize_label(label: str) -> str:
+    """Convert a label to snake_case variable name format.
+
+    Args:
+        label: The label text to normalize.
+
+    Returns:
+        A snake_case version of the label.
+    """
+    # Convert to lowercase and replace spaces/special chars with underscores
+    normalized = re.sub(r"[^\w\s]", "", label.lower())
+    normalized = re.sub(r"\s+", "_", normalized.strip())
+    return normalized
 
 
 class AlbertClient:
     """Client to interact with the Albert learning platform."""
 
     base_url = "https://sis.portal.nyu.edu/psp/ihprod/EMPLOYEE/EMPL/?cmd=start"
-    
+
     @staticmethod
     def _default_auth_state_path() -> Path:
         """Get the platform-appropriate default path for the auth state file."""
@@ -24,9 +39,7 @@ class AlbertClient:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "albert_auth.json"
 
-    def __init__(
-        self, base_url: str | None = None, auth_state_path: Path | None = None
-    ):
+    def __init__(self, base_url: str | None = None, auth_state_path: Path | None = None):
         """Initializes the AlbertClient."""
         if base_url is not None:
             self.base_url = base_url
@@ -59,11 +72,11 @@ class AlbertClient:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             # Wait for the username input field to appear and be visible
             page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
-            
+
             if username is not None:
                 page.locator("input[type='email']").fill(username)
                 page.get_by_role("button", name="Next").click()
-                
+
                 if password is not None:
                     # Wait for password field to appear
                     page.wait_for_load_state("domcontentloaded", timeout=10000)
@@ -75,10 +88,8 @@ class AlbertClient:
                     print("Please enter your password in the browser window and complete MFA.")
             else:
                 print("Please enter your username and password in the browser window, then complete MFA.")
-            
-            page.wait_for_url(
-                "**/h/?tab=IS_FSA_TAB", timeout=60000
-            )  # adjust to post-login URL
+
+            page.wait_for_url("**/h/?tab=IS_FSA_TAB", timeout=60000)  # adjust to post-login URL
 
             context.storage_state(path=self.auth_state_path)
             logger.debug(f"Authentication state saved at {self.auth_state_path}")
@@ -86,13 +97,13 @@ class AlbertClient:
             browser.close()
         return True
 
-    def _get_courses_paginated(self, page: Page, course_name: str) -> Generator[Locator, None, None]:
+    def _get_courses_paginated(self, page: Page, course_name: str) -> Generator[Locator]:
         """Iterator that yields course locators across all pages with pagination.
-        
+
         Args:
             page: The Playwright page object.
             course_name: The name of the course to filter by.
-            
+
         Yields:
             Course locators matching the course name across all pages.
         """
@@ -105,9 +116,8 @@ class AlbertClient:
                 .locator("visible=true")
                 .all()
             )
-            for course in courses:
-                yield course
-            
+            yield from courses
+
             # Check if there's a next page button and click it
             next_button = page.locator(".isFSA_PNext")
             if next_button.count() > 0 and next_button.is_visible():
@@ -119,11 +129,11 @@ class AlbertClient:
 
     def _save_roster_for_course(self, course: Locator, save_path: Path | None = None) -> Path:
         """Process a course and save its roster.
-        
+
         Args:
             course: A course locator element.
             save_path: Directory to save the roster. If None, saves to current directory.
-            
+
         Returns:
             Path to the saved roster file.
         """
@@ -149,6 +159,57 @@ class AlbertClient:
         roster_page.close()
         return download_file_path
 
+    def _fetch_course_class_details(self, course: Locator) -> dict:
+        """Fetch class detail information for a course.
+
+        Args:
+            course: A course locator element.
+
+        Returns:
+            Dictionary with class detail information.
+        """
+        with course.page.expect_popup() as popup_info:
+            course.get_by_role("link", name="Class Roster").click()
+        roster_page = popup_info.value
+        roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
+
+        # Click "Class meeting information"
+        roster_page.get_by_text("Class meeting information").click()
+        roster_page.wait_for_load_state("networkidle")
+
+        # Click "Full Class Detail"
+        roster_page.get_by_text("Full Class Detail").click()
+        roster_page.wait_for_load_state("networkidle")
+
+        # Extract all elements with class psc_has_value
+        class_details = {}
+        elements = roster_page.locator(".psc_has_value").all()
+
+        for element in elements:
+            # Find the label within this element
+            label_element = element.locator(".ps-label")
+            if label_element.count() > 0:
+                label_text = label_element.text_content()
+                if label_text:
+                    label_text = label_text.strip()
+                    # Find the value within this element
+                    value_element = element.locator(".ps_box-value")
+                    if value_element.count() > 0:
+                        value_text = value_element.text_content()
+                        if value_text:
+                            value_text = value_text.strip()
+                            # Normalize the label to snake_case
+                            normalized_label = _normalize_label(label_text)
+                            # Try to convert to integer if it looks like one
+                            try:
+                                value = int(value_text)
+                            except ValueError:
+                                value = value_text
+                            class_details[normalized_label] = value
+
+        roster_page.close()
+        return class_details
+
     def _fetch_rosters_session(
         self,
         course_name: str,
@@ -157,23 +218,21 @@ class AlbertClient:
         headless: bool = True,
     ) -> list[Path]:
         """Internal method to fetch rosters in a single browser session.
-        
+
         Raises TimeoutError if the session times out.
         Raises RuntimeError if authentication has expired.
         """
         result_paths = []
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
-            context = browser.new_context(
-                storage_state=self.auth_state_path, accept_downloads=True
-            )
+            context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
             page = context.new_page()
 
             page.goto(self.base_url)
             if "login" in page.url or "errorCode" in page.url:
                 browser.close()
                 raise RuntimeError("Authentication session expired.")
-            
+
             try:
                 page.locator("#IS_FSA_SchWrp").get_by_role("link", name=str(term)).click()
             except Exception as e:
@@ -183,8 +242,12 @@ class AlbertClient:
                 logger.debug(f"Click failed. Current URL: {current_url}")
                 logger.debug(f"Error message: {error_message}")
                 # Check both the current URL and the error message for login/auth failures
-                if ("login" in current_url or "errorCode" in current_url or 
-                    "errorCode=105" in error_message or "cmd=login" in error_message):
+                if (
+                    "login" in current_url
+                    or "errorCode" in current_url
+                    or "errorCode=105" in error_message
+                    or "cmd=login" in error_message
+                ):
                     logger.info("Detected authentication failure in error message")
                     browser.close()
                     raise RuntimeError("Authentication session expired during navigation.") from e
@@ -192,14 +255,14 @@ class AlbertClient:
                 logger.debug("Not an auth error, re-raising original exception")
                 browser.close()
                 raise
-            
+
             page.wait_for_load_state("networkidle")
 
             # Process all courses across all pages
             for course in self._get_courses_paginated(page, course_name):
                 download_path = self._save_roster_for_course(course, save_path)
                 result_paths.append(download_path)
-            
+
             browser.close()
         return result_paths
 
@@ -216,8 +279,8 @@ class AlbertClient:
         course offering.
 
         Args:
-          * course_name (str): The name of the course. 
-          * term (str | Term): The term of the course. 
+          * course_name (str): The name of the course.
+          * term (str | Term): The term of the course.
           * save_path (Path | None): Directory to save the rosters. If None,
             uses default directory.
           * username (str | None): NetID to log in with. If None, user must enter manually.
@@ -231,11 +294,118 @@ class AlbertClient:
         if not self.auth_state_path.exists():
             logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
             self.authenticate(username=username, password=password, headless=headless)
-        
+
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
                 return self._fetch_rosters_session(course_name, term, save_path, headless)
+            except (TimeoutError, RuntimeError) as e:
+                if attempt < max_retries:
+                    logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(username=username, password=password, headless=headless)
+                else:
+                    logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
+                    raise
+        return []
+
+    def _fetch_class_details_session(
+        self,
+        course_name: str,
+        term: str | Term,
+        headless: bool = True,
+    ) -> list[dict]:
+        """Internal method to fetch class details in a single browser session.
+
+        Raises TimeoutError if the session times out.
+        Raises RuntimeError if authentication has expired.
+        """
+        result = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(storage_state=self.auth_state_path)
+            page = context.new_page()
+
+            page.goto(self.base_url)
+            if "login" in page.url or "errorCode" in page.url:
+                browser.close()
+                raise RuntimeError("Authentication session expired.")
+
+            try:
+                page.locator("#IS_FSA_SchWrp").get_by_role("link", name=str(term)).click()
+            except Exception as e:
+                # The click failed - check if we got redirected to login
+                error_message = str(e)
+                current_url = page.url
+                logger.debug(f"Click failed. Current URL: {current_url}")
+                logger.debug(f"Error message: {error_message}")
+                # Check both the current URL and the error message for login/auth failures
+                if (
+                    "login" in current_url
+                    or "errorCode" in current_url
+                    or "errorCode=105" in error_message
+                    or "cmd=login" in error_message
+                ):
+                    logger.info("Detected authentication failure in error message")
+                    browser.close()
+                    raise RuntimeError("Authentication session expired during navigation.") from e
+                # If not a login redirect, re-raise the original exception
+                logger.debug("Not an auth error, re-raising original exception")
+                browser.close()
+                raise
+
+            page.wait_for_load_state("networkidle")
+
+            # Process all courses across all pages
+            for course in self._get_courses_paginated(page, course_name):
+                class_details = self._fetch_course_class_details(course)
+                result.append(class_details)
+
+            browser.close()
+        return result
+
+    def fetch_class_details(
+        self,
+        course_name: str,
+        term: str | Term,
+        username: str | None = None,
+        password: str | None = None,
+        headless: bool = True,
+        output: Path | None = None,
+    ) -> list[dict]:
+        """Fetch class details for a course offering and optionally save.
+
+        Args:
+          * course_name (str): The name of the course.
+          * term (str | Term): The term of the course.
+          * username (str | None): NetID to log in with. If None, user must enter manually.
+          * password (str | None): Password for login. If None, user must enter manually.
+          * headless (bool): Whether to run the browser in headless mode.
+          * output (Path | None): Path to save the output JSON. If None, doesn't save.
+
+        Returns:
+            list[dict]: List of dictionaries with class details.
+        """
+        # Check if authentication state exists; if not, authenticate first
+        if not self.auth_state_path.exists():
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            self.authenticate(username=username, password=password, headless=headless)
+
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                result = self._fetch_class_details_session(course_name, term, headless)
+
+                # Save to output if specified
+                if output is not None:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    with output.open("w") as f:
+                        json.dump(result, f, indent=2)
+                    logger.info(f"Class details saved to {output}")
+
+                return result
             except (TimeoutError, RuntimeError) as e:
                 if attempt < max_retries:
                     logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
@@ -306,4 +476,40 @@ def fetch_and_save_rosters(
         username=username,
         password=password,
         headless=headless,
+    )
+
+
+def fetch_class_details(
+    course_name: str,
+    term: str | Term,
+    username: str | None = None,
+    password: str | None = None,
+    headless: bool = True,
+    output: Path | None = None,
+    base_url: str | None = None,
+    auth_state_path: Path | None = None,
+) -> list[dict]:
+    """Fetch class details for a course offering and optionally save.
+
+    Args:
+        course_name: The course name to match in Albert.
+        term: A term string (e.g., "Fall 2025") or `Term`.
+        username: NetID to log in with. If None, user must enter manually.
+        password: Password for login. If None, user must enter manually.
+        headless: Run browser headless; default True for automation.
+        output: Path to save output JSON; if None, doesn't save.
+        base_url: Override base URL for Albert.
+        auth_state_path: Path to stored authentication state JSON.
+
+    Returns:
+        List of dictionaries with class details.
+    """
+    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
+    return client.fetch_class_details(
+        course_name=course_name,
+        term=term,
+        username=username,
+        password=password,
+        headless=headless,
+        output=output,
     )
