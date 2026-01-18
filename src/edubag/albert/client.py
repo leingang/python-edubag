@@ -41,12 +41,13 @@ class AlbertClient:
         Args:
             username (str | None): NetID to log in with. If None, user must enter manually in browser.
             password (str | None): Password for login. If None, user must enter manually in browser.
-            headless (bool): Whether to run the browser in headless mode.
+            headless (bool): Whether to run the browser in headless mode. Headless mode requires username and password.
 
         Returns:
             bool: True if authentication was successful, False otherwise.
         """
-        # Placeholder for login logic
+        if username is None or password is None:
+            headless = False
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context()
@@ -229,7 +230,7 @@ class AlbertClient:
         # Check if authentication state exists; if not, authenticate first
         if not self.auth_state_path.exists():
             logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
-            self.authenticate(username=username, password=password, headless=False)
+            self.authenticate(username=username, password=password, headless=headless)
         
         max_retries = 1
         for attempt in range(max_retries + 1):
@@ -241,7 +242,7 @@ class AlbertClient:
                     logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    self.authenticate(username=username, password=password, headless=False)
+                    self.authenticate(username=username, password=password, headless=headless)
                 else:
                     logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
