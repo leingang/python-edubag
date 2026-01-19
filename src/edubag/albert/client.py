@@ -159,31 +159,17 @@ class AlbertClient:
         roster_page.close()
         return download_file_path
 
-    def _fetch_course_class_details(self, course: Locator) -> dict:
-        """Fetch class detail information for a course.
+    def _extract_class_details_from_container(self, container: Locator | Page) -> dict:
+        """Extract class details from a container element or page.
 
         Args:
-            course: A course locator element.
+            container: A Locator or Page containing elements with class psc_has_value.
 
         Returns:
-            Dictionary with class detail information.
+            Dictionary with extracted class detail information.
         """
-        with course.page.expect_popup() as popup_info:
-            course.get_by_role("link", name="Class Roster").click()
-        roster_page = popup_info.value
-        roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
-
-        # Click "Class meeting information"
-        roster_page.get_by_text("Class meeting information").click()
-        roster_page.wait_for_load_state("networkidle")
-
-        # Click "Full Class Detail"
-        roster_page.get_by_text("Full Class Detail").click()
-        roster_page.wait_for_load_state("networkidle")
-
-        # Extract all elements with class psc_has_value
         class_details = {}
-        elements = roster_page.locator(".psc_has_value").all()
+        elements = container.locator(".psc_has_value").all()
 
         for element in elements:
             # Find the label within this element
@@ -192,10 +178,27 @@ class AlbertClient:
                 continue
 
             label_text = label_element.first.text_content()
-            if not label_text or not label_text.strip():
+            if label_text:
+                label_text = label_text.strip()
+            
+            # If label is empty or just whitespace (like &nbsp;), extract from label element's parent ID
+            if not label_text or label_text == "\xa0":  # \xa0 is non-breaking space
+                label_parent = label_element.first.locator("xpath=parent::*")
+                if label_parent.count() > 0:
+                    label_parent_id = label_parent.first.get_attribute("id")
+                    if label_parent_id:
+                        match = re.search(r"win0div([A-Z0-9_]+)lbl", label_parent_id)
+                        if match:
+                            label_text = match.group(1)
+                        else:
+                            continue
+                    else:
+                        continue
+                else:
+                    continue
+            
+            if not label_text:
                 continue
-
-            label_text = label_text.strip()
 
             # Find the value within this element - try ps_box-value first
             value_element = element.locator(".ps_box-value")
@@ -221,22 +224,110 @@ class AlbertClient:
             if value_text is None:
                 continue
 
+            # Clean up the value text: replace non-breaking spaces with regular spaces and collapse multiple spaces
+            if value_text:
+                value_text = value_text.replace("\xa0", " ")
+                value_text = re.sub(r" +", " ", value_text)
+                value_text = value_text.strip()
+
+            # Skip elements with empty or whitespace-only values
+            if not value_text:
+                continue
+
             # Normalize the label to snake_case
             normalized_label = _normalize_label(label_text)
+            # map funny labels to more standard ones
+            label_mappings = {
+                "derived_clsrch_descr200": "full_course_name",
+                "derived_clsrch_descrlong": "description",
+                "ssr_cls_dtl_wrk_ssr_cls_txb_msg": "textbook_message",
+            }
+            if normalized_label in label_mappings:
+                normalized_label = label_mappings[normalized_label]
 
             # Try to convert to integer if the value is a clean integer string.
             # Values like '123ABC' or '12.5' will be kept as strings.
+            # Values starting with '0' (except exactly '0') are kept as strings to preserve leading zeros.
             # This is intentional to preserve data as-is unless clearly numeric.
             # Empty strings are kept as-is.
             if value_text:
-                try:
-                    value = int(value_text)
-                except ValueError:
+                # Keep strings with leading zeros (except exactly "0") as strings
+                if value_text.startswith("0") and len(value_text) > 1:
                     value = value_text
+                else:
+                    try:
+                        value = int(value_text)
+                    except ValueError:
+                        value = value_text
             else:
                 value = value_text
 
             class_details[normalized_label] = value
+
+            # Special parsing for derived_ssr_fc_descr254: "Course Name (class_number) (class_type)"
+            if normalized_label == "derived_ssr_fc_descr254" and isinstance(value, str):
+                # Match pattern: text (text) (text)
+                match = re.match(r"^(.+?)\s*\(([^)]+)\)\s*\(([^)]+)\)$", value)
+                if match:
+                    course_name = match.group(1).strip()
+                    # class_number = match.group(2).strip()  # Already have this
+                    class_type = match.group(3).strip()
+                    class_details["course_name"] = course_name
+                    class_details["class_type"] = class_type
+                    del class_details[normalized_label]
+
+            # Special parsing for derived_clsrch_sss_page_keydescr: "School | Term | Type"
+            if normalized_label == "derived_clsrch_sss_page_keydescr" and isinstance(value, str):
+                # Extract the school (part before the first |)
+                parts = value.split("|")
+                if parts:
+                    school = parts[0].strip()
+                    class_details["school"] = school
+                del class_details[normalized_label]
+
+        return class_details
+
+    def _fetch_course_class_details(self, course: Locator) -> dict:
+        """Fetch class detail information for a course.
+
+        Args:
+            course: A course locator element.
+
+        Returns:
+            Dictionary with class detail information.
+        """
+        with course.page.expect_popup() as popup_info:
+            course.get_by_role("link", name="Class Roster").click()
+        roster_page = popup_info.value
+        roster_page.wait_for_url(re.compile(r".*PortalActualURL=.*"))
+
+        class_details = {}
+        # Extract class details from the roster page header
+        roster_metadata = roster_page.locator("#win0divROSTER_HDRGRP")
+        if roster_metadata.count() > 0:
+            roster_details = self._extract_class_details_from_container(roster_metadata)
+            class_details.update(roster_details)
+            logger.debug(f"Extracted {len(roster_details)} fields from roster page header")
+
+        # Extract class details from the roster page metadata section
+        roster_metadata = roster_page.locator("#win0divCLASS_MTG_NBR1\\$0")
+        if roster_metadata.count() > 0:
+            roster_details = self._extract_class_details_from_container(roster_metadata)
+            class_details.update(roster_details)
+            logger.debug(f"Extracted {len(roster_details)} fields from roster page")
+
+        # Click "Class meeting information"
+        roster_page.get_by_text("Class meeting information").click()
+        roster_page.wait_for_load_state("networkidle")
+
+        # Click "Full Class Detail" and wait until an actual H1 with text "Class Detail" is visible
+        roster_page.get_by_text("View Full Class Detail").click()
+        roster_page.locator("h1:has-text('Class Detail')").wait_for(state="visible", timeout=30000)
+
+        # Extract all elements from the full class detail page
+        detail_page_data = self._extract_class_details_from_container(roster_page)
+        class_details.update(detail_page_data)
+        logger.debug(f"Extracted {len(detail_page_data)} fields from full class detail page")
 
         roster_page.close()
         return class_details
