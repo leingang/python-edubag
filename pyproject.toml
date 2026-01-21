@@ -22,9 +22,10 @@ dependencies = [
   "pyyaml",
   "playwright",
   "html5lib",
-  "platformdirs"
+  "platformdirs",
+  "python-dotenv"
 ]
-requires-python = ">= 3.13"
+requires-python = ">= 3.12"
 
 [project.optional-dependencies]
 test = [
