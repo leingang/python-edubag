@@ -30,7 +30,7 @@ class GradescopeClient:
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless=False) -> bool:
+    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> bool:
         """Log into Gradescope and save the authentication state.
 
         Args:
@@ -136,9 +136,7 @@ class GradescopeClient:
 
                 # Check the current state and update if needed
                 is_checked = notify_checkbox.is_checked()
-                if notify and not is_checked:
-                    notify_checkbox.click()
-                elif not notify and is_checked:
+                if notify != is_checked:
                     notify_checkbox.click()
 
                 # Click the "Sync Roster" button
