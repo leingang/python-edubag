@@ -1,21 +1,21 @@
 from pathlib import Path
-from typing import List, Annotated
+from typing import Annotated
+
 import typer
-
 from loguru import logger
-from rich.progress import track
 
-
+from edubag import app as main_app
 from edubag.albert.roster import AlbertRoster
+from edubag.brightspace.gradebook import Gradebook
 from edubag.gradescope.roster import GradescopeRoster
 from edubag.gradescope.scoresheet import (
     Scoresheet,
-    VersionedScoresheet,
     SectionedScoresheet,
+    VersionedScoresheet,
 )
-from edubag.brightspace.gradebook import Gradebook
 
-from edubag import app as main_app
+from .client import authenticate as client_authenticate
+from .client import sync_roster as client_sync_roster
 
 # Create a local Typer app for gradescope subcommands
 app = typer.Typer(help="Gradescope management commands")
@@ -72,5 +72,50 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
     return
 
 
+# Nested Typer app for web client automation
+client_app = typer.Typer(help="Automate Gradescope web client interactions")
+
+
+@client_app.command()
+def authenticate(
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to save auth state JSON")] = None,
+    headless: Annotated[bool, typer.Option(help="Run browser headless for login")] = False,
+) -> None:
+    """Open Gradescope for login and persist authentication state."""
+    ok = client_authenticate(
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+        headless=headless,
+    )
+    if ok:
+        typer.echo("Authentication state saved.")
+    else:
+        raise typer.Exit(code=1)
+
+
+@client_app.command("sync-roster")
+def sync_roster(
+    course: Annotated[str, typer.Argument(help="Gradescope course ID or URL to the course home page")],
+    notify: Annotated[bool, typer.Option(help="Notify added users")] = True,
+    headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
+) -> None:
+    """Synchronize the course roster with the linked LMS."""
+    ok = client_sync_roster(
+        course=course,
+        notify=notify,
+        headless=headless,
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+    )
+    if ok:
+        typer.echo("Roster sync completed successfully.")
+    else:
+        raise typer.Exit(code=1)
+
+
 # Register the gradescope app as a subcommand with the main app
 main_app.add_typer(app, name="gradescope")
+app.add_typer(client_app, name="client")
