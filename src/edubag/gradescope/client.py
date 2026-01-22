@@ -90,11 +90,11 @@ class GradescopeClient:
             browser.close()
         return True
 
-    def sync_roster(self, course_url: str, notify: bool = True, headless: bool = True) -> bool:
+    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> bool:
         """Synchronize the course roster with the linked LMS.
 
         Args:
-            course_url: URL to the course home page on Gradescope
+            course: Gradescope course ID or URL to the course home page
             notify: notify added users
             headless: Whether to run the browser in headless mode
 
@@ -107,6 +107,11 @@ class GradescopeClient:
             page = context.new_page()
 
             # Navigate to the course page
+            # Determine if course is a full URL or just an ID
+            if course.startswith("http://") or course.startswith("https://"):
+                course_url = course
+            else:
+                course_url = f"{self.base_url}/courses/{course}"
             page.goto(course_url)
 
             # Check if we need to re-login
@@ -121,13 +126,14 @@ class GradescopeClient:
                 page.wait_for_load_state("networkidle")
 
                 # Try to click "More" button if it exists
-                more_button = page.get_by_role("button", name=" More")
+                more_button = page.locator(".js-toggleActionBarCollapsedMenu")
                 if more_button.count() > 0:
                     more_button.click()
                     page.wait_for_load_state("networkidle")
 
                 # Click the Sync button (using inexact match on "Sync")
-                page.get_by_role("button", name="Sync").first.click()
+                # It has class js-openSyncLTIv1p3RosterModal
+                page.get_by_role("button", name="Sync", exact=False).first.click()
                 page.wait_for_load_state("networkidle")
 
                 # Handle the notification checkbox
@@ -142,9 +148,9 @@ class GradescopeClient:
                 # Click the "Sync Roster" button
                 page.get_by_role("button", name="Sync Roster").click()
 
-                # Wait for sync to complete
-                page.wait_for_load_state("networkidle", timeout=30000)
-
+                # Wait until the dialog disappears
+                page.get_by_role("button", name="Sync Roster").wait_for(state="detached", timeout=60000)    
+    
                 logger.info("Roster sync completed successfully")
                 browser.close()
                 return True
@@ -180,7 +186,7 @@ def authenticate(
 
 
 def sync_roster(
-    course_url: str,
+    course: str,
     notify: bool = True,
     headless: bool = True,
     base_url: str | None = None,
@@ -189,7 +195,7 @@ def sync_roster(
     """Synchronize the course roster with the linked LMS.
 
     Args:
-        course_url: URL to the course home page on Gradescope
+        course: Gradescope course ID or URL to the course home page
         notify: notify added users
         headless: Run browser headless; default True for automation.
         base_url: Override base URL for Gradescope.
@@ -199,4 +205,4 @@ def sync_roster(
         True on success, False otherwise.
     """
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.sync_roster(course_url=course_url, notify=notify, headless=headless)
+    return client.sync_roster(course=course, notify=notify, headless=headless)

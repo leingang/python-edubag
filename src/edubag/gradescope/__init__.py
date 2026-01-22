@@ -96,7 +96,7 @@ def authenticate(
 
 @client_app.command("sync-roster")
 def sync_roster(
-    course_url: Annotated[str, typer.Argument(help="URL to the course home page on Gradescope")],
+    course: Annotated[str, typer.Argument(help="Gradescope course ID or URL to the course home page")],
     notify: Annotated[bool, typer.Option(help="Notify added users")] = True,
     headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
     base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
@@ -104,7 +104,7 @@ def sync_roster(
 ) -> None:
     """Synchronize the course roster with the linked LMS."""
     ok = client_sync_roster(
-        course_url=course_url,
+        course=course,
         notify=notify,
         headless=headless,
         base_url=base_url,
