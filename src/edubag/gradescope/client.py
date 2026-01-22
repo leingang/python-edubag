@@ -151,7 +151,14 @@ class GradescopeClient:
                 # Wait until the dialog disappears
                 page.get_by_role("button", name="Sync Roster").wait_for(state="detached", timeout=60000)    
     
-                logger.info("Roster sync completed successfully")
+                # Check for flash message alert
+                flash_alert = page.locator(".alert.alert-flashMessage.alert-success span").first
+                if flash_alert.count() > 0:
+                    message = flash_alert.text_content()
+                    logger.info(message)
+                else:
+                    logger.info("Roster sync succeeded with no changes.")
+                
                 browser.close()
                 return True
 

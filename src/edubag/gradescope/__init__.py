@@ -27,7 +27,7 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
         Path, typer.Argument(help="Path to the Gradescope scores zip or CSV file.")
     ],
     output: Annotated[
-        Path, typer.Argument(help="Path to the output Brightspace gradebook CSV file.")
+        Path | None, typer.Argument(help="Path to the output Brightspace gradebook CSV file.")
     ] = None,
     by_section: Annotated[
         bool, typer.Option(help="Save separate files for each section.")
