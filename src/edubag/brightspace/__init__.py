@@ -51,7 +51,9 @@ def build_attendance_gradebook(
     ] = "Attendance Points",
     scale: Annotated[
         float,
-        typer.Option(help="Scale factor applied to attendance points (e.g., weight per session)"),
+        typer.Option(
+            help="Scale factor applied to attendance points (e.g., weight per session)"
+        ),
     ] = 1.0,
 ):
     """Aggregate attendance CSVs and produce a Brightspace-ready gradebook CSV.
@@ -62,7 +64,9 @@ def build_attendance_gradebook(
     """
 
     try:
-        gb = Gradebook.from_attendance_dir(attendance_dir, column_name=column_name, scale=scale)
+        gb = Gradebook.from_attendance_dir(
+            attendance_dir, column_name=column_name, scale=scale
+        )
     except ValueError as e:
         raise typer.BadParameter(str(e)) from e
 
@@ -144,7 +148,9 @@ def build_engagement_gradebook(
     # Load base gradebook
     logger.info(f"Loading base gradebook from {base_gradebook}")
     base_gb = Gradebook.from_csv(base_gradebook)
-    logger.info(f"Base gradebook: {len(base_gb.grades)} students, {len(base_gb.grades.columns)} columns")
+    logger.info(
+        f"Base gradebook: {len(base_gb.grades)} students, {len(base_gb.grades.columns)} columns"
+    )
 
     # Apply GradebookTransformer to compute category metrics
     transformer = GradebookTransformer(base_gb)
@@ -225,7 +231,9 @@ def build_engagement_gradebook(
         }
 
     if not aggregator.sources:
-        raise typer.BadParameter("At least one data source must be provided (attendance, edstem, or office_hours)")
+        raise typer.BadParameter(
+            "At least one data source must be provided (attendance, edstem, or office_hours)"
+        )
 
     # Set configuration
     aggregator.config = engagement_config
@@ -244,17 +252,23 @@ def build_engagement_gradebook(
     # Pre-quizzes denominator: total - exemptions (from metadata)
     pq_total = category_metadata.get("Pre-Quizzes", {}).get("total_items", 0)
     if pq_total > 0:
-        merged_df["pq_denominator"] = pq_total - merged_df.get("gradebook_Pre-Quizzes_exemptions", 0)
+        merged_df["pq_denominator"] = pq_total - merged_df.get(
+            "gradebook_Pre-Quizzes_exemptions", 0
+        )
 
     # Pre-surveys denominator: total - exemptions
     ps_total = category_metadata.get("Pre-Surveys", {}).get("total_items", 0)
     if ps_total > 0:
-        merged_df["ps_denominator"] = ps_total - merged_df.get("gradebook_Pre-Surveys_exemptions", 0)
+        merged_df["ps_denominator"] = ps_total - merged_df.get(
+            "gradebook_Pre-Surveys_exemptions", 0
+        )
 
     # Polls denominator: total - exemptions
     pl_total = category_metadata.get("Polls", {}).get("total_items", 0)
     if pl_total > 0:
-        merged_df["pl_denominator"] = pl_total - merged_df.get("gradebook_Polls_exemptions", 0)
+        merged_df["pl_denominator"] = pl_total - merged_df.get(
+            "gradebook_Polls_exemptions", 0
+        )
 
     # Attendance denominator: total sessions - X count
     # (attendance records have P, R, A, X counts; total sessions = P + R + A + X)
@@ -265,7 +279,9 @@ def build_engagement_gradebook(
             + merged_df.get("attendance_A", 0)
             + merged_df.get("attendance_X", 0)
         )
-        merged_df["att_denominator"] = merged_df["att_total_sessions"] - merged_df.get("attendance_X", 0)
+        merged_df["att_denominator"] = merged_df["att_total_sessions"] - merged_df.get(
+            "attendance_X", 0
+        )
 
     logger.info("Added intermediate denominator columns")
 
@@ -288,7 +304,9 @@ def build_engagement_gradebook(
 
     logger.info(f"Writing engagement gradebook to {output}")
     output_gb.to_csv(output)
-    logger.success(f"✅ Wrote gradebook with {len(output_gb.grades)} students to {output}")
+    logger.success(
+        f"✅ Wrote gradebook with {len(output_gb.grades)} students to {output}"
+    )
 
 
 # Config-driven aggregation helpers
@@ -415,7 +433,9 @@ def aggregate_from_config(
     base_gradebook = None
 
     for name, source_config in cfg["data_sources"].items():
-        source, categories = _load_data_source_from_config(name, source_config, base_dir)
+        source, categories = _load_data_source_from_config(
+            name, source_config, base_dir
+        )
         sources[name] = source
 
         if name == "gradebook":
@@ -425,7 +445,8 @@ def aggregate_from_config(
             drop_cols = [
                 c
                 for c in source.grades.columns
-                if c.startswith("Engagement Raw Score Points") or c.startswith("Engagement Adjusted Score Points")
+                if c.startswith("Engagement Raw Score Points")
+                or c.startswith("Engagement Adjusted Score Points")
             ]
             if drop_cols:
                 source.grades = source.grades.drop(columns=drop_cols)
@@ -467,12 +488,16 @@ def aggregate_from_config(
             for cat in category_metadata:
                 pattern = f"category_metadata['{cat}']['total_items']"
                 if pattern in formula:
-                    formula = formula.replace(pattern, str(category_metadata[cat]["total_items"]))
+                    formula = formula.replace(
+                        pattern, str(category_metadata[cat]["total_items"])
+                    )
 
         # Support backticked column names (e.g., `gradebook_Pre-Quizzes_exemptions`)
         formula_eval = formula
         if "`" in formula_eval:
-            formula_eval = re.sub(r"`([^`]+)`", lambda m: f"df['{m.group(1)}']", formula_eval)
+            formula_eval = re.sub(
+                r"`([^`]+)`", lambda m: f"df['{m.group(1)}']", formula_eval
+            )
 
         logger.debug(
             f"  Columns in merged_df: {[c for c in merged_df.columns if 'exemptions' in c or 'denominator' in c]}"
@@ -488,13 +513,20 @@ def aggregate_from_config(
                 pattern = r"\b" + re.escape(col) + r"(?!\])"
                 if re.search(pattern, formula_eval):
                     # Only replace if not already in df[...]
-                    if f"df['{col}']" not in formula_eval and f'df["{col}"]' not in formula_eval:
+                    if (
+                        f"df['{col}']" not in formula_eval
+                        and f'df["{col}"]' not in formula_eval
+                    ):
                         formula_eval = re.sub(pattern, f"df['{col}']", formula_eval)
 
         # Evaluate formula in Python to handle bracketed column access
         logger.debug(f"  Denominator formula for {denom_name}: {formula_eval}")
         try:
-            merged_df[denom_name] = eval(formula_eval, {}, {"df": merged_df, "category_metadata": category_metadata})
+            merged_df[denom_name] = eval(
+                formula_eval,
+                {},
+                {"df": merged_df, "category_metadata": category_metadata},
+            )
             logger.info(f"  Computed {denom_name}")
         except Exception as e:
             logger.error(f"  Failed to compute {denom_name}: {e}")
@@ -543,7 +575,9 @@ def aggregate_from_config(
         if stats["count"] > 0:
             zero_pct = (stats["zeros"] / stats["count"]) * 100
             if zero_pct > zero_threshold:
-                logger.warning(f"  {col_name}: {zero_pct:.1f}% zeros (threshold: {zero_threshold}%)")
+                logger.warning(
+                    f"  {col_name}: {zero_pct:.1f}% zeros (threshold: {zero_threshold}%)"
+                )
 
     # Show report if requested
     if show_report:
@@ -557,7 +591,9 @@ def aggregate_from_config(
     output_config = cfg.get("output", {})
     if output_config.get("keep_only_engagement_columns", False):
         engagement_cols = list(cfg["columns"].keys())
-        keep_cols = ["Username"] + [c for c in engagement_cols if c in output_gb.grades.columns]
+        keep_cols = ["Username"] + [
+            c for c in engagement_cols if c in output_gb.grades.columns
+        ]
         output_gb.grades = output_gb.grades[keep_cols]
 
     # Write output
@@ -567,7 +603,9 @@ def aggregate_from_config(
 
     logger.info(f"Writing engagement gradebook to {output}")
     output_gb.to_csv(output)
-    logger.success(f"✅ Wrote gradebook with {len(output_gb.grades)} students to {output}")
+    logger.success(
+        f"✅ Wrote gradebook with {len(output_gb.grades)} students to {output}"
+    )
 
     # Show sample if configured
     display_config = cfg.get("display", {})
@@ -584,9 +622,19 @@ client_app = typer.Typer(help="Automate Brightspace web client interactions")
 
 @client_app.command()
 def authenticate(
-    base_url: Annotated[str | None, typer.Option(help="Override Brightspace base URL")] = None,
-    auth_state_path: Annotated[Path | None, typer.Option(help="Path to save auth state JSON")] = None,
-    headless: Annotated[bool, typer.Option(help="Run browser headless for login")] = False,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Brightspace base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to save auth state JSON")
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = False,
 ) -> None:
     """Open Brightspace for login and persist authentication state."""
     ok = client_authenticate(
@@ -603,10 +651,22 @@ def authenticate(
 @client_app.command("save-gradebook")
 def save_gradebook(
     course: Annotated[str, typer.Argument(help="Course ID or full URL to the course")],
-    save_dir: Annotated[Path | None, typer.Option(help="Directory to save the gradebook file")] = None,
-    headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
-    base_url: Annotated[str | None, typer.Option(help="Override Brightspace base URL")] = None,
-    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
+    save_dir: Annotated[
+        Path | None, typer.Option(help="Directory to save the gradebook file")
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Brightspace base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
 ) -> None:
     """Fetch and save the gradebook for a course."""
     paths = client_save_gradebook(
@@ -623,10 +683,22 @@ def save_gradebook(
 @client_app.command("save-attendance")
 def save_attendance(
     course: Annotated[str, typer.Argument(help="Course ID or full URL to the course")],
-    save_dir: Annotated[Path | None, typer.Option(help="Directory to save the attendance files")] = None,
-    headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
-    base_url: Annotated[str | None, typer.Option(help="Override Brightspace base URL")] = None,
-    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
+    save_dir: Annotated[
+        Path | None, typer.Option(help="Directory to save the attendance files")
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Brightspace base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
 ) -> None:
     """Fetch and save the attendance registers for a course."""
     paths = client_save_attendance(
