@@ -27,7 +27,8 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
         Path, typer.Argument(help="Path to the Gradescope scores zip or CSV file.")
     ],
     output: Annotated[
-        Path | None, typer.Argument(help="Path to the output Brightspace gradebook CSV file.")
+        Path | None,
+        typer.Argument(help="Path to the output Brightspace gradebook CSV file."),
     ] = None,
     by_section: Annotated[
         bool, typer.Option(help="Save separate files for each section.")
@@ -78,9 +79,19 @@ client_app = typer.Typer(help="Automate Gradescope web client interactions")
 
 @client_app.command()
 def authenticate(
-    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
-    auth_state_path: Annotated[Path | None, typer.Option(help="Path to save auth state JSON")] = None,
-    headless: Annotated[bool, typer.Option(help="Run browser headless for login")] = False,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Gradescope base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to save auth state JSON")
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = False,
 ) -> None:
     """Open Gradescope for login and persist authentication state."""
     ok = client_authenticate(
@@ -96,11 +107,23 @@ def authenticate(
 
 @client_app.command("sync-roster")
 def sync_roster(
-    course: Annotated[str, typer.Argument(help="Gradescope course ID or URL to the course home page")],
+    course: Annotated[
+        str, typer.Argument(help="Gradescope course ID or URL to the course home page")
+    ],
     notify: Annotated[bool, typer.Option(help="Notify added users")] = True,
-    headless: Annotated[bool, typer.Option(help="Run browser headless for automation")] = True,
-    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
-    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Gradescope base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
 ) -> None:
     """Synchronize the course roster with the linked LMS."""
     ok = client_sync_roster(
