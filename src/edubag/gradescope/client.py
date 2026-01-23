@@ -233,25 +233,12 @@ class GradescopeClient:
             # Wait for the course list to load
             page.wait_for_load_state("networkidle")
 
-            # Convert term to string representation
+            # Convert term to string representation (e.g., "FALL 2025")
             term_str = str(term)
 
-            # Find the term header
-            term_divs = page.locator("div.courseList--term").all()
-            term_found = False
-            for term_div in term_divs:
-                if term_str in term_div.text_content():
-                    term_found = True
-                    logger.debug(f"Found term: {term_str}")
-                    break
-
-            if not term_found:
-                logger.warning(f"Term '{term_str}' not found on page")
-                browser.close()
-                return result
-
-            # Get the next sibling which should be courseList--coursesForTerm
-            # We need to find courses for this term
+            # Find the courses container for this specific term
+            # Note: :has-text() in Playwright does substring matching, but since term strings
+            # like "FALL 2025" are specific enough, this should be safe from partial matches
             courses_container = page.locator(
                 f"div.courseList--term:has-text('{term_str}') + div.courseList--coursesForTerm"
             )
