@@ -2,7 +2,7 @@
 """Tests for gradescope client module."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from edubag.albert.term import Season, Term
 from edubag.gradescope.client import GradescopeClient
@@ -117,7 +117,7 @@ class TestGradescopeClient:
                 return_value=[{"course_name": "Test Course"}],
             ):
                 # Mock file operations
-                with patch("builtins.open", create=True) as mock_open:
+                with patch("builtins.open", create=True):
                     with patch("pathlib.Path.mkdir"):
                         result = client.fetch_class_details(
                             course_name="Test Course",
