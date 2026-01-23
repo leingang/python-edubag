@@ -14,7 +14,7 @@ EduBag is a Python package that provides tools for Bootstrapping, Aggregating, a
   - `rich` for terminal output formatting
   - `pandas` for data manipulation
   - `playwright` for browser automation
-  - `beautifulsoup4` for HTML parsing
+  - `bs4` (Beautiful Soup 4) for HTML parsing
   - `pyyaml` for configuration
   - `python-dotenv` for environment variables
 
@@ -40,7 +40,7 @@ The project uses `justfile` for task automation. Common commands:
   - `just test` - Run all tests
   - `just test path/to/test.py` - Run specific test file
   - `just pdb` - Run tests with debugger on failure
-  - `just testall` - Run tests on multiple Python versions (note: project requires Python 3.13+)
+  - `just testall` - Run tests on multiple Python versions (note: project requires Python 3.13+ per pyproject.toml, but the testall command may test against earlier versions for compatibility checking)
 
 ## Code Style and Conventions
 
