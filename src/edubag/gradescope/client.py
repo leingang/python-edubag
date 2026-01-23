@@ -280,8 +280,13 @@ class GradescopeClient:
                     link = course_box.locator("a.courseBox--link")
                     if link.count() > 0:
                         matching_courses.append(link.first)
-                        shortname = course_box.locator("h3.courseBox--shortname").text_content()
-                        logger.debug(f"Found matching course: {shortname}")
+                        # Try to get the shortname for logging
+                        shortname_locator = course_box.locator("h3.courseBox--shortname")
+                        if shortname_locator.count() > 0:
+                            shortname = shortname_locator.text_content()
+                            logger.debug(f"Found matching course: {shortname}")
+                        else:
+                            logger.debug("Found matching course (no shortname available)")
 
             # Now visit each matching course and extract details
             for course_link in matching_courses:
