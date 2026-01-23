@@ -52,21 +52,27 @@ class BrightspaceClient:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             # Wait for the username input field to appear and be visible
             page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
+            username_field = page.locator("input[type='email']")
 
             if username is not None:
-                page.locator("input[type='email']").fill(username)
+                username_field.fill(username)
                 page.get_by_role("button", name="Next").click()
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+                page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
+                password_field = page.locator("input[type='password']")
 
                 if password is not None:
                     # Wait for password field to appear
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
-                    page.locator("input[type='password']").fill(password)
+                    password_field.fill(password)
                     page.get_by_role("button", name="Sign in").click()
                     page.get_by_role("button", name="Approve with MFA (Duo)‎ You").click()
                 else:
+                    # interactive mode: focus password field and wait for user to enter password
+                    password_field.click()
                     print("Please enter your password in the browser window and complete MFA.")
             else:
+                # interactive mode: focus username field and wait for user to enter credentials
+                username_field.click()
                 print("Please enter your username and password in the browser window, then complete MFA.")
 
             # Wait for the Brightspace home page to load after successful login
@@ -211,16 +217,36 @@ class BrightspaceClient:
             # Navigate to Attendance
             page.get_by_role("button", name="More Tools").click()
             page.get_by_role("link", name="Attendance").click()
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+
+            # Exit early if there are no attendance registers available
+            empty_state = page.locator(".empty-state-container").first
+            if empty_state.is_visible():
+                logger.info("No attendance registers available; nothing to download.")
+                browser.close()
+                return result_paths
 
             # Process each attendance register
             attendance_links = page.get_by_title("View attendance data in ").all()
+            if not attendance_links:
+                logger.info("No attendance registers found; nothing to download.")
+                browser.close()
+                return result_paths
             for loc in attendance_links:
                 loc.click()
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+                # Get the attendance name from the h1 heading
+                attendance_name = page.locator("h1").inner_text()
+                logger.info(f"Processing {attendance_name}")
+                logger.debug(f"Processing attendance register at {page.url}")
                 page.get_by_role("button", name="Export All Data").click()
 
                 with page.expect_download() as download2_info:
-                    # locate the element with class "dfl" and find the first link inside it.
-                    page.locator(".dfl").locator("a").click()
+                    # Download link lives inside the export dialog iframe; target it directly
+                    iframe = page.frame_locator("iframe[title='Export Attendance Data']").first
+                    download_link = iframe.locator(".dfl a").first
+                    download_link.wait_for(state="visible", timeout=10000)
+                    download_link.click()
                 download2 = download2_info.value
 
                 # Save the download
