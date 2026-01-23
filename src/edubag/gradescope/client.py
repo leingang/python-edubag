@@ -236,11 +236,27 @@ class GradescopeClient:
             # Convert term to string representation (e.g., "FALL 2025")
             term_str = str(term)
 
-            # Find the courses container for this specific term
-            # Note: :has-text() in Playwright does substring matching, but since term strings
-            # like "FALL 2025" are specific enough, this should be safe from partial matches
-            courses_container = page.locator(
-                f"div.courseList--term:has-text('{term_str}') + div.courseList--coursesForTerm"
+            # Find all term divs and filter for the exact one we want
+            term_divs = page.locator("div.courseList--term")
+            matching_term_index = -1
+
+            # Find the term div that contains our term string
+            for i in range(term_divs.count()):
+                term_div = term_divs.nth(i)
+                if term_str in term_div.text_content():
+                    matching_term_index = i
+                    logger.debug(f"Found term: {term_str}")
+                    break
+
+            if matching_term_index == -1:
+                logger.warning(f"Term '{term_str}' not found on page")
+                browser.close()
+                return result
+
+            # Get the courses container that follows this term div
+            # Use nth() to get the specific term div, then use the + selector
+            courses_container = term_divs.nth(matching_term_index).locator(
+                "xpath=following-sibling::div[contains(@class, 'courseList--coursesForTerm')][1]"
             )
 
             if courses_container.count() == 0:
@@ -271,8 +287,15 @@ class GradescopeClient:
             for course_link in matching_courses:
                 course_url = course_link.get_attribute("href")
                 if course_url:
+                    # Validate and construct the full URL safely
+                    # Ensure course_url is a relative path starting with /
+                    if not course_url.startswith("/"):
+                        logger.warning(f"Skipping invalid course URL: {course_url}")
+                        continue
+
                     # Navigate to the course page
-                    page.goto(f"{self.base_url}{course_url}")
+                    full_url = f"{self.base_url}{course_url}"
+                    page.goto(full_url)
                     page.wait_for_load_state("networkidle")
 
                     # Extract course details

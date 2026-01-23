@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Tests for gradescope client module."""
 
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -106,24 +107,27 @@ class TestGradescopeClient:
     def test_fetch_class_details_with_output(self):
         """Test that fetch_class_details saves to output file."""
         client = GradescopeClient()
-        output_path = Path("/tmp/test_output.json")
 
-        # Mock authentication state path to exist
-        with patch("pathlib.Path.exists", return_value=True):
-            # Mock the session method
-            with patch.object(
-                client,
-                "_fetch_class_details_session",
-                return_value=[{"course_name": "Test Course"}],
-            ):
-                # Mock file operations
-                with patch("builtins.open", create=True):
-                    with patch("pathlib.Path.mkdir"):
-                        result = client.fetch_class_details(
-                            course_name="Test Course",
-                            term="Fall 2025",
-                            headless=True,
-                            output=output_path,
-                        )
+        # Use tempfile for cross-platform compatibility
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test_output.json"
 
-                        assert result == [{"course_name": "Test Course"}]
+            # Mock authentication state path to exist
+            with patch("pathlib.Path.exists", return_value=True):
+                # Mock the session method
+                with patch.object(
+                    client,
+                    "_fetch_class_details_session",
+                    return_value=[{"course_name": "Test Course"}],
+                ):
+                    # Mock file operations
+                    with patch("builtins.open", create=True):
+                        with patch("pathlib.Path.mkdir"):
+                            result = client.fetch_class_details(
+                                course_name="Test Course",
+                                term="Fall 2025",
+                                headless=True,
+                                output=output_path,
+                            )
+
+                            assert result == [{"course_name": "Test Course"}]
