@@ -10,8 +10,6 @@ from playwright.sync_api import sync_playwright
 class BrightspaceClient:
     """Client to interact with the Brightspace learning platform."""
 
-    base_url = "https://brightspace.nyu.edu/"
-
     @staticmethod
     def _default_auth_state_path() -> Path:
         """Get the platform-appropriate default path for the auth state file."""
@@ -23,12 +21,14 @@ class BrightspaceClient:
         """Initializes the BrightspaceClient."""
         if base_url is not None:
             self.base_url = base_url
+        else:
+            self.base_url = "https://brightspace.nyu.edu/"
         if auth_state_path is not None:
             self.auth_state_path = auth_state_path
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless=False) -> bool:
+    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> bool:
         """Log into Brightspace and save the authentication state.
 
         Args:
@@ -156,7 +156,7 @@ class BrightspaceClient:
           * headless: Whether to run the browser in headless mode
 
         Returns:
-            Path: Paths to the downloaded roster files.
+            list[Path]: Paths to the downloaded gradebook files.
         """
         # Check if authentication state exists; if not, raise an error
         if not self.auth_state_path.exists():
@@ -173,10 +173,9 @@ class BrightspaceClient:
                     logger.info("Please re-authenticate manually.")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    raise
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
-                    raise
+                raise
         return []
 
     def _save_attendance_session(
@@ -272,10 +271,9 @@ class BrightspaceClient:
                     logger.info("Please re-authenticate manually.")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    raise
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
-                    raise
+                raise
         return []
 
 
