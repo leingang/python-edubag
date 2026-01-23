@@ -40,7 +40,7 @@ The project uses `justfile` for task automation. Common commands:
   - `just test` - Run all tests
   - `just test path/to/test.py` - Run specific test file
   - `just pdb` - Run tests with debugger on failure
-  - `just testall` - Run tests on all supported Python versions (3.10-3.13)
+  - `just testall` - Run tests on multiple Python versions (note: project requires Python 3.13+)
 
 ## Code Style and Conventions
 
@@ -97,9 +97,10 @@ src/edubag/
 - Update documentation in `/docs` if adding user-facing features
 
 ## Package Management
+- **Primary Tool**: `uv` is the primary package manager
 - Dependencies are defined in `pyproject.toml`
-- Use `uv` commands for package management
-- Don't manually edit `Pipfile.lock`
+- Use `uv` commands for package management (e.g., `uv run`, `uv build`)
+- Legacy `Pipfile` and `Pipfile.lock` may exist but `uv` is preferred for all operations
 
 ## Documentation
 - Main documentation is in `/docs` directory (index.md, installation.md, usage.md)
