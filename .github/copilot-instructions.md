@@ -37,10 +37,10 @@ The project uses `justfile` for task automation. Common commands:
 - **Framework**: pytest
 - **Test Location**: `/tests` directory
 - **Running Tests**:
-  - `just test` - Run all tests
+  - `just test` - Run all tests (using Python 3.13)
   - `just test path/to/test.py` - Run specific test file
   - `just pdb` - Run tests with debugger on failure
-  - `just testall` - Run tests on multiple Python versions (note: project requires Python 3.13+ per pyproject.toml, but the testall command may test against earlier versions for compatibility checking)
+  - `just testall` - Test across Python 3.10-3.13 (note: pyproject.toml specifies 3.13+ as minimum, so older versions may not be officially supported)
 
 ## Code Style and Conventions
 
