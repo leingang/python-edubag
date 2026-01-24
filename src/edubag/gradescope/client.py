@@ -25,7 +25,9 @@ class GradescopeClient:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "gradescope_auth.json"
 
-    def __init__(self, base_url: str | None = None, auth_state_path: Path | None = None):
+    def __init__(
+        self, base_url: str | None = None, auth_state_path: Path | None = None
+    ):
         """Initializes the GradescopeClient."""
         if base_url is not None:
             self.base_url = base_url
@@ -34,7 +36,12 @@ class GradescopeClient:
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> bool:
+    def authenticate(
+        self,
+        username: str | None = None,
+        password: str | None = None,
+        headless: bool = False,
+    ) -> bool:
         """Log into Gradescope and save the authentication state.
 
         Args:
@@ -72,7 +79,9 @@ class GradescopeClient:
             page.get_by_role("button", name="Log In").click()
 
             # Wait for login form to appear
-            page.get_by_role("textbox", name="Email").wait_for(state="visible", timeout=10000)
+            page.get_by_role("textbox", name="Email").wait_for(
+                state="visible", timeout=10000
+            )
 
             if username is not None:
                 page.get_by_role("textbox", name="Email").fill(username)
@@ -94,7 +103,9 @@ class GradescopeClient:
             browser.close()
         return True
 
-    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> bool:
+    def sync_roster(
+        self, course: str, notify: bool = True, headless: bool = True
+    ) -> bool:
         """Synchronize the course roster with the linked LMS.
 
         Args:
@@ -142,7 +153,9 @@ class GradescopeClient:
 
                 # Handle the notification checkbox
                 sync_dialog = page.get_by_label("Sync with NYU Brightspace")
-                notify_checkbox = sync_dialog.get_by_text("Let new users know that they")
+                notify_checkbox = sync_dialog.get_by_text(
+                    "Let new users know that they"
+                )
 
                 # Check the current state and update if needed
                 is_checked = notify_checkbox.is_checked()
@@ -153,10 +166,14 @@ class GradescopeClient:
                 page.get_by_role("button", name="Sync Roster").click()
 
                 # Wait until the dialog disappears
-                page.get_by_role("button", name="Sync Roster").wait_for(state="detached", timeout=60000)
+                page.get_by_role("button", name="Sync Roster").wait_for(
+                    state="detached", timeout=60000
+                )
 
                 # Check for flash message alert
-                flash_alert = page.locator(".alert.alert-flashMessage.alert-success span").first
+                flash_alert = page.locator(
+                    ".alert.alert-flashMessage.alert-success span"
+                ).first
                 if flash_alert.count() > 0:
                     message = flash_alert.text_content()
                     logger.info(message)
@@ -182,30 +199,43 @@ class GradescopeClient:
         """
         course_details = {}
 
-        # Extract course name from the h1.courseHeader--title
-        course_name_element = page.locator("h1.courseHeader--title")
-        if course_name_element.count() > 0:
-            course_details["course_name"] = course_name_element.text_content().strip()
+        # Extract course number from the h1.courseHeader--title
+        course_number_element = page.locator("h1.courseHeader--title")
+        if course_number_element.count() > 0:
+            text = course_number_element.text_content()
+            if text:
+                course_details["course_number"] = text.strip()
 
-        # Extract Course ID from div.courseHeader--id
-        course_id_element = page.locator("div.courseHeader--id")
+        # Extract course name from the sidebar subtitle (format: "MATH-UA 122.006 Calculus II, Spring 2026")
+        sidebar_subtitle = page.locator("div.sidebar--subtitle")
+        if sidebar_subtitle.count() > 0:
+            subtitle_text = sidebar_subtitle.text_content()
+            if subtitle_text:
+                course_details["course_name"] = subtitle_text.strip()
+
+        # Extract Course ID from div.courseHeader--courseID
+        course_id_element = page.locator("div.courseHeader--courseID")
         if course_id_element.count() > 0:
-            course_id_text = course_id_element.text_content().strip()
-            # Remove "Course ID: " prefix if present
-            course_id_text = re.sub(r"^Course ID:\s*", "", course_id_text)
-            course_details["course_id"] = course_id_text
+            course_id_text = course_id_element.text_content()
+            if course_id_text:
+                course_id_text = course_id_text.strip()
+                # Extract just the number from "Course ID: 1227665"
+                course_id_match = re.search(r"(\d+)", course_id_text)
+                if course_id_match:
+                    course_details["course_id"] = course_id_match.group(1)
 
-        # Extract instructors from div.instructorList
-        instructor_list = page.locator("div.instructorList button.rosterCell--primaryLink")
-        if instructor_list.count() > 0:
-            instructors = [instructor.text_content().strip() for instructor in instructor_list.all()]
-            course_details["instructors"] = instructors
-
-        # Extract term (if available) from the page - it may be in courseHeader or other location
-        # The term should already be known from the input, but we can try to extract it too
-        term_element = page.locator("div.courseHeader--term")
-        if term_element.count() > 0:
-            course_details["term"] = term_element.text_content().strip()
+        # Extract instructors from the sidebar roster (aria-label="Instructor: ...")
+        instructor_items = page.locator("li[aria-label^='Instructor:']")
+        if instructor_items.count() > 0:
+            instructors = []
+            for item in instructor_items.all():
+                aria_label = item.get_attribute("aria-label")
+                # Extract name from "Instructor: Name" format
+                if aria_label and aria_label.startswith("Instructor:"):
+                    name = aria_label.replace("Instructor:", "").strip()
+                    instructors.append(name)
+            if instructors:
+                course_details["instructors"] = instructors
 
         return course_details
 
@@ -238,14 +268,15 @@ class GradescopeClient:
 
             # Find all term divs and filter for the exact one we want
             term_divs = page.locator("div.courseList--term")
+            term_count = term_divs.count()
             matching_term_index = -1
 
             # Find the term div that contains our term string
-            for i in range(term_divs.count()):
+            for i in range(term_count):
                 term_div = term_divs.nth(i)
-                if term_str in term_div.text_content():
+                term_text = term_div.text_content()
+                if term_text and term_str in term_text:
                     matching_term_index = i
-                    logger.debug(f"Found term: {term_str}")
                     break
 
             if matching_term_index == -1:
@@ -253,40 +284,41 @@ class GradescopeClient:
                 browser.close()
                 return result
 
-            # Get the courses container that follows this term div
-            # Use nth() to get the specific term div, then use the + selector
-            courses_container = term_divs.nth(matching_term_index).locator(
-                "xpath=following-sibling::div[contains(@class, 'courseList--coursesForTerm')][1]"
-            )
+            # Get all coursesForTerm containers and find the one after our matching term
+            courses_for_term_divs = page.locator("div.courseList--coursesForTerm")
+            courses_for_term_count = courses_for_term_divs.count()
+
+            # The courses container should be at the same index as the term (terms and containers alternate)
+            if matching_term_index < courses_for_term_count:
+                courses_container = courses_for_term_divs.nth(matching_term_index)
+            else:
+                logger.warning(
+                    f"Courses container index {matching_term_index} out of range (only {courses_for_term_count} containers)"
+                )
+                browser.close()
+                return result
 
             if courses_container.count() == 0:
                 logger.warning(f"No courses found for term '{term_str}'")
                 browser.close()
                 return result
 
-            # Create a regex pattern with word boundaries for the course name
-            # Escape special regex characters in course_name
+            # Create a regex pattern with word boundary after course name (but not before)
+            # This allows matching "Calculus II" even when preceded by "122.011"
             escaped_course_name = re.escape(course_name)
-            course_pattern = rf"\b{escaped_course_name}\b"
+            course_pattern = rf"{escaped_course_name}\b"
 
             # Find all course boxes within the container
-            course_boxes = courses_container.locator("div.courseBox").all()
+            course_boxes = courses_container.locator("a.courseBox").all()
             matching_courses = []
 
             for course_box in course_boxes:
                 text_content = course_box.text_content()
-                if re.search(course_pattern, text_content, re.IGNORECASE):
-                    # Extract the link from this course box
-                    link = course_box.locator("a.courseBox--link")
-                    if link.count() > 0:
-                        matching_courses.append(link.first)
-                        # Try to get the shortname for logging
-                        shortname_locator = course_box.locator("h3.courseBox--shortname")
-                        if shortname_locator.count() > 0:
-                            shortname = shortname_locator.text_content()
-                            logger.debug(f"Found matching course: {shortname}")
-                        else:
-                            logger.debug("Found matching course (no shortname available)")
+                if text_content and re.search(
+                    course_pattern, text_content, re.IGNORECASE
+                ):
+                    # The course box itself is already the link
+                    matching_courses.append(course_box)
 
             # Now visit each matching course and extract details
             for course_link in matching_courses:
@@ -306,7 +338,9 @@ class GradescopeClient:
                     # Extract course details
                     course_details = self._extract_course_details(page)
                     result.append(course_details)
-                    logger.info(f"Extracted details for course: {course_details.get('course_name', 'Unknown')}")
+                    logger.info(
+                        f"Extracted details for course: {course_details.get('course_name', 'Unknown')}"
+                    )
 
                     # Go back to the home page for the next iteration
                     page.goto(self.base_url)
@@ -339,7 +373,9 @@ class GradescopeClient:
         """
         # Check if authentication state exists; if not, authenticate first
         if not self.auth_state_path.exists():
-            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            logger.warning(
+                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
+            )
             self.authenticate(username=username, password=password, headless=headless)
 
         max_retries = 1
@@ -357,11 +393,15 @@ class GradescopeClient:
                 return result
             except RuntimeError as e:
                 if attempt < max_retries:
-                    logger.warning(f"RuntimeError: {e} Authentication may have expired.")
+                    logger.warning(
+                        f"RuntimeError: {e} Authentication may have expired."
+                    )
                     logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    self.authenticate(username=username, password=password, headless=headless)
+                    self.authenticate(
+                        username=username, password=password, headless=headless
+                    )
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
