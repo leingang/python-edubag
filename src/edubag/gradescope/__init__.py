@@ -15,6 +15,7 @@ from edubag.gradescope.scoresheet import (
 )
 
 from .client import authenticate as client_authenticate
+from .client import fetch_class_details as client_fetch_class_details
 from .client import sync_roster as client_sync_roster
 
 # Create a local Typer app for gradescope subcommands
@@ -137,6 +138,42 @@ def sync_roster(
         typer.echo("Roster sync completed successfully.")
     else:
         raise typer.Exit(code=1)
+
+
+@client_app.command("fetch-details")
+def fetch_class_details(
+    course_name: Annotated[str, typer.Argument(help="Course name to match in Gradescope")],
+    term: Annotated[str, typer.Argument(help="Term, e.g., 'Fall 2025'")],
+    output: Annotated[Path | None, typer.Option(help="Path to save output in")] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Gradescope base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
+) -> None:
+    """Fetch class details for a course offering and optionally save."""
+    import json
+
+    result = client_fetch_class_details(
+        course_name=course_name,
+        term=term,
+        headless=headless,
+        output=output,
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+    )
+
+    # If output is None, pretty-print to STDOUT
+    if output is None:
+        typer.echo(json.dumps(result, indent=2))
 
 
 # Register the gradescope app as a subcommand with the main app

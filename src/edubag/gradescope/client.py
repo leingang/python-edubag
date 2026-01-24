@@ -1,12 +1,16 @@
 """Module to automate interactions with the Gradescope platform."""
 
+import json
 import os
+import re
 from pathlib import Path
 
 import platformdirs
 from dotenv import load_dotenv
 from loguru import logger
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Page, sync_playwright
+
+from edubag.albert.term import Term
 
 
 class GradescopeClient:
@@ -21,7 +25,9 @@ class GradescopeClient:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "gradescope_auth.json"
 
-    def __init__(self, base_url: str | None = None, auth_state_path: Path | None = None):
+    def __init__(
+        self, base_url: str | None = None, auth_state_path: Path | None = None
+    ):
         """Initializes the GradescopeClient."""
         if base_url is not None:
             self.base_url = base_url
@@ -30,7 +36,12 @@ class GradescopeClient:
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> bool:
+    def authenticate(
+        self,
+        username: str | None = None,
+        password: str | None = None,
+        headless: bool = False,
+    ) -> bool:
         """Log into Gradescope and save the authentication state.
 
         Args:
@@ -68,7 +79,9 @@ class GradescopeClient:
             page.get_by_role("button", name="Log In").click()
 
             # Wait for login form to appear
-            page.get_by_role("textbox", name="Email").wait_for(state="visible", timeout=10000)
+            page.get_by_role("textbox", name="Email").wait_for(
+                state="visible", timeout=10000
+            )
 
             if username is not None:
                 page.get_by_role("textbox", name="Email").fill(username)
@@ -90,7 +103,9 @@ class GradescopeClient:
             browser.close()
         return True
 
-    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> bool:
+    def sync_roster(
+        self, course: str, notify: bool = True, headless: bool = True
+    ) -> bool:
         """Synchronize the course roster with the linked LMS.
 
         Args:
@@ -138,7 +153,9 @@ class GradescopeClient:
 
                 # Handle the notification checkbox
                 sync_dialog = page.get_by_label("Sync with NYU Brightspace")
-                notify_checkbox = sync_dialog.get_by_text("Let new users know that they")
+                notify_checkbox = sync_dialog.get_by_text(
+                    "Let new users know that they"
+                )
 
                 # Check the current state and update if needed
                 is_checked = notify_checkbox.is_checked()
@@ -149,16 +166,20 @@ class GradescopeClient:
                 page.get_by_role("button", name="Sync Roster").click()
 
                 # Wait until the dialog disappears
-                page.get_by_role("button", name="Sync Roster").wait_for(state="detached", timeout=60000)    
-    
+                page.get_by_role("button", name="Sync Roster").wait_for(
+                    state="detached", timeout=60000
+                )
+
                 # Check for flash message alert
-                flash_alert = page.locator(".alert.alert-flashMessage.alert-success span").first
+                flash_alert = page.locator(
+                    ".alert.alert-flashMessage.alert-success span"
+                ).first
                 if flash_alert.count() > 0:
                     message = flash_alert.text_content()
                     logger.info(message)
                 else:
                     logger.info("Roster sync succeeded with no changes.")
-                
+
                 browser.close()
                 return True
 
@@ -166,6 +187,225 @@ class GradescopeClient:
                 logger.error(f"Error during roster sync: {e}")
                 browser.close()
                 return False
+
+    def _extract_course_details(self, page: Page) -> dict:
+        """Extract course details from a Gradescope course page.
+
+        Args:
+            page: The Playwright page object for the course home page.
+
+        Returns:
+            Dictionary with course detail information.
+        """
+        course_details = {}
+
+        # Extract course number from the h1.courseHeader--title
+        course_number_element = page.locator("h1.courseHeader--title")
+        if course_number_element.count() > 0:
+            text = course_number_element.text_content()
+            if text:
+                course_details["course_number"] = text.strip()
+
+        # Extract course name from the sidebar subtitle (format: "MATH-UA 122.006 Calculus II, Spring 2026")
+        sidebar_subtitle = page.locator("div.sidebar--subtitle")
+        if sidebar_subtitle.count() > 0:
+            subtitle_text = sidebar_subtitle.text_content()
+            if subtitle_text:
+                course_details["course_name"] = subtitle_text.strip()
+
+        # Extract Course ID from div.courseHeader--courseID
+        course_id_element = page.locator("div.courseHeader--courseID")
+        if course_id_element.count() > 0:
+            course_id_text = course_id_element.text_content()
+            if course_id_text:
+                course_id_text = course_id_text.strip()
+                # Extract just the number from "Course ID: 1227665"
+                course_id_match = re.search(r"(\d+)", course_id_text)
+                if course_id_match:
+                    course_details["course_id"] = course_id_match.group(1)
+
+        # Extract instructors from the sidebar roster (aria-label="Instructor: ...")
+        instructor_items = page.locator("li[aria-label^='Instructor:']")
+        if instructor_items.count() > 0:
+            instructors = []
+            for item in instructor_items.all():
+                aria_label = item.get_attribute("aria-label")
+                # Extract name from "Instructor: Name" format
+                if aria_label and aria_label.startswith("Instructor:"):
+                    name = aria_label.replace("Instructor:", "").strip()
+                    instructors.append(name)
+            if instructors:
+                course_details["instructors"] = instructors
+
+        return course_details
+
+    def _fetch_class_details_session(
+        self,
+        course_name: str,
+        term: str | Term,
+        headless: bool = True,
+    ) -> list[dict]:
+        """Internal method to fetch class details in a single browser session.
+
+        Raises RuntimeError if authentication has expired.
+        """
+        result = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(storage_state=self.auth_state_path)
+            page = context.new_page()
+
+            page.goto(self.base_url)
+            if "login" in page.url:
+                browser.close()
+                raise RuntimeError("Authentication session expired.")
+
+            # Wait for the course list to load
+            page.wait_for_load_state("networkidle")
+
+            # Convert term to string representation (e.g., "FALL 2025")
+            term_str = str(term)
+
+            # Find all term divs and filter for the exact one we want
+            term_divs = page.locator("div.courseList--term")
+            term_count = term_divs.count()
+            matching_term_index = -1
+
+            # Find the term div that contains our term string
+            for i in range(term_count):
+                term_div = term_divs.nth(i)
+                term_text = term_div.text_content()
+                if term_text and term_str in term_text:
+                    matching_term_index = i
+                    break
+
+            if matching_term_index == -1:
+                logger.warning(f"Term '{term_str}' not found on page")
+                browser.close()
+                return result
+
+            # Get all coursesForTerm containers and find the one after our matching term
+            courses_for_term_divs = page.locator("div.courseList--coursesForTerm")
+            courses_for_term_count = courses_for_term_divs.count()
+
+            # The courses container should be at the same index as the term (terms and containers alternate)
+            if matching_term_index < courses_for_term_count:
+                courses_container = courses_for_term_divs.nth(matching_term_index)
+            else:
+                logger.warning(
+                    f"Courses container index {matching_term_index} out of range (only {courses_for_term_count} containers)"
+                )
+                browser.close()
+                return result
+
+            if courses_container.count() == 0:
+                logger.warning(f"No courses found for term '{term_str}'")
+                browser.close()
+                return result
+
+            # Create a regex pattern with word boundary after course name (but not before)
+            # This allows matching "Calculus II" even when preceded by "122.011"
+            escaped_course_name = re.escape(course_name)
+            course_pattern = rf"{escaped_course_name}\b"
+
+            # Find all course boxes within the container
+            course_boxes = courses_container.locator("a.courseBox").all()
+            matching_courses = []
+
+            for course_box in course_boxes:
+                text_content = course_box.text_content()
+                if text_content and re.search(
+                    course_pattern, text_content, re.IGNORECASE
+                ):
+                    # The course box itself is already the link
+                    matching_courses.append(course_box)
+
+            # Now visit each matching course and extract details
+            for course_link in matching_courses:
+                course_url = course_link.get_attribute("href")
+                if course_url:
+                    # Validate and construct the full URL safely
+                    # Ensure course_url is a relative path starting with /
+                    if not course_url.startswith("/"):
+                        logger.warning(f"Skipping invalid course URL: {course_url}")
+                        continue
+
+                    # Navigate to the course page
+                    full_url = f"{self.base_url}{course_url}"
+                    page.goto(full_url)
+                    page.wait_for_load_state("networkidle")
+
+                    # Extract course details
+                    course_details = self._extract_course_details(page)
+                    result.append(course_details)
+                    logger.info(
+                        f"Extracted details for course: {course_details.get('course_name', 'Unknown')}"
+                    )
+
+                    # Go back to the home page for the next iteration
+                    page.goto(self.base_url)
+                    page.wait_for_load_state("networkidle")
+
+            browser.close()
+        return result
+
+    def fetch_class_details(
+        self,
+        course_name: str,
+        term: str | Term,
+        username: str | None = None,
+        password: str | None = None,
+        headless: bool = True,
+        output: Path | None = None,
+    ) -> list[dict]:
+        """Fetch class details for a course offering and optionally save.
+
+        Args:
+          * course_name (str): The name of the course.
+          * term (str | Term): The term of the course.
+          * username (str | None): NetID to log in with. If None, user must enter manually.
+          * password (str | None): Password for login. If None, user must enter manually.
+          * headless (bool): Whether to run the browser in headless mode.
+          * output (Path | None): Path to save the output JSON. If None, doesn't save.
+
+        Returns:
+            list[dict]: List of dictionaries with class details.
+        """
+        # Check if authentication state exists; if not, authenticate first
+        if not self.auth_state_path.exists():
+            logger.warning(
+                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
+            )
+            self.authenticate(username=username, password=password, headless=headless)
+
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                result = self._fetch_class_details_session(course_name, term, headless)
+
+                # Save to output if specified
+                if output is not None:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    with output.open("w") as f:
+                        json.dump(result, f, indent=2)
+                    logger.info(f"Class details saved to {output}")
+
+                return result
+            except RuntimeError as e:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"RuntimeError: {e} Authentication may have expired."
+                    )
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(
+                        username=username, password=password, headless=headless
+                    )
+                else:
+                    logger.error(f"Max retries exceeded. RuntimeError: {e}")
+                    raise
+        return []
 
 
 # Convenience module-level functions for CLI and simple scripting
@@ -213,3 +453,39 @@ def sync_roster(
     """
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
     return client.sync_roster(course=course, notify=notify, headless=headless)
+
+
+def fetch_class_details(
+    course_name: str,
+    term: str | Term,
+    username: str | None = None,
+    password: str | None = None,
+    headless: bool = True,
+    output: Path | None = None,
+    base_url: str | None = None,
+    auth_state_path: Path | None = None,
+) -> list[dict]:
+    """Fetch class details for a course offering and optionally save.
+
+    Args:
+        course_name: The course name to match in Gradescope.
+        term: A term string (e.g., "Fall 2025") or `Term`.
+        username: Username to log in with. If None, attempts to load from environment.
+        password: Password for login. If None, attempts to load from environment.
+        headless: Run browser headless; default True for automation.
+        output: Path to save output JSON; if None, doesn't save.
+        base_url: Override base URL for Gradescope.
+        auth_state_path: Path to stored authentication state JSON.
+
+    Returns:
+        List of dictionaries with class details.
+    """
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    return client.fetch_class_details(
+        course_name=course_name,
+        term=term,
+        username=username,
+        password=password,
+        headless=headless,
+        output=output,
+    )
