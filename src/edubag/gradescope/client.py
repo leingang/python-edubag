@@ -303,22 +303,24 @@ class GradescopeClient:
                 browser.close()
                 return result
 
-            # Create a regex pattern with word boundary after course name (but not before)
-            # This allows matching "Calculus II" even when preceded by "122.011"
-            escaped_course_name = re.escape(course_name)
-            course_pattern = rf"{escaped_course_name}\b"
+            # Normalize whitespace in course name (handle line breaks, multiple spaces, etc.)
+            normalized_course_name = re.sub(r"\s+", " ", course_name).strip()
 
-            # Find all course boxes within the container
-            course_boxes = courses_container.locator("a.courseBox").all()
-            matching_courses = []
+            # Build a regex once for reuse with locator filters
+            course_regex = re.compile(re.escape(normalized_course_name), re.IGNORECASE)
+            logger.debug(f"Looking for course matching regex: {course_regex.pattern}")
 
-            for course_box in course_boxes:
-                text_content = course_box.text_content()
-                if text_content and re.search(
-                    course_pattern, text_content, re.IGNORECASE
-                ):
-                    # The course box itself is already the link
-                    matching_courses.append(course_box)
+            # Locate matching course boxes via Playwright locator filters
+            course_boxes = courses_container.locator("a.courseBox")
+            by_name = course_boxes.filter(
+                has=page.locator("div.courseBox--name", has_text=course_regex)
+            )
+            # Fallback: match on any text inside the course box
+            by_box_text = course_boxes.filter(has_text=course_regex)
+
+            # Combine matches using Playwright's locator union
+            matching_courses = by_name.or_(by_box_text).all()
+            logger.debug(f"Found {len(matching_courses)} matching course boxes")
 
             # Now visit each matching course and extract details
             for course_link in matching_courses:
