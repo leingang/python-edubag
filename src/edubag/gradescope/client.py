@@ -212,7 +212,7 @@ class GradescopeClient:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
 
             # Find the download roster link
-            # It's an <a> element with class containing "tiiBtn" and href ending with "memberships.csv"
+            # It's an <a> element with href ending with "memberships.csv"
             download_link = page.locator('a[href$="/memberships.csv"]').first
 
             # Wait for the download link to be available
@@ -271,9 +271,7 @@ class GradescopeClient:
                     continue
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
-                raise
-        # This should never be reached, but return an empty Path as a fallback
-        return Path()
+                    raise
 
     def _extract_course_details(self, page: Page) -> dict:
         """Extract course details from a Gradescope course page.
