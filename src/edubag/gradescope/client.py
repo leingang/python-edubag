@@ -25,9 +25,7 @@ class GradescopeClient:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "gradescope_auth.json"
 
-    def __init__(
-        self, base_url: str | None = None, auth_state_path: Path | None = None
-    ):
+    def __init__(self, base_url: str | None = None, auth_state_path: Path | None = None):
         """Initializes the GradescopeClient."""
         if base_url is not None:
             self.base_url = base_url
@@ -79,9 +77,7 @@ class GradescopeClient:
             page.get_by_role("button", name="Log In").click()
 
             # Wait for login form to appear
-            page.get_by_role("textbox", name="Email").wait_for(
-                state="visible", timeout=10000
-            )
+            page.get_by_role("textbox", name="Email").wait_for(state="visible", timeout=10000)
 
             if username is not None:
                 page.get_by_role("textbox", name="Email").fill(username)
@@ -103,9 +99,7 @@ class GradescopeClient:
             browser.close()
         return True
 
-    def sync_roster(
-        self, course: str, notify: bool = True, headless: bool = True
-    ) -> bool:
+    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> bool:
         """Synchronize the course roster with the linked LMS.
 
         Args:
@@ -153,9 +147,7 @@ class GradescopeClient:
 
                 # Handle the notification checkbox
                 sync_dialog = page.get_by_label("Sync with NYU Brightspace")
-                notify_checkbox = sync_dialog.get_by_text(
-                    "Let new users know that they"
-                )
+                notify_checkbox = sync_dialog.get_by_text("Let new users know that they")
 
                 # Check the current state and update if needed
                 is_checked = notify_checkbox.is_checked()
@@ -166,14 +158,10 @@ class GradescopeClient:
                 page.get_by_role("button", name="Sync Roster").click()
 
                 # Wait until the dialog disappears
-                page.get_by_role("button", name="Sync Roster").wait_for(
-                    state="detached", timeout=60000
-                )
+                page.get_by_role("button", name="Sync Roster").wait_for(state="detached", timeout=60000)
 
                 # Check for flash message alert
-                flash_alert = page.locator(
-                    ".alert.alert-flashMessage.alert-success span"
-                ).first
+                flash_alert = page.locator(".alert.alert-flashMessage.alert-success span").first
                 if flash_alert.count() > 0:
                     message = flash_alert.text_content()
                     logger.info(message)
@@ -187,6 +175,103 @@ class GradescopeClient:
                 logger.error(f"Error during roster sync: {e}")
                 browser.close()
                 return False
+
+    def _save_roster_session(
+        self,
+        course: str,
+        save_dir: Path | None = None,
+        headless: bool = True,
+    ) -> Path:
+        """Internal method to save roster in a single browser session.
+
+        Raises RuntimeError if authentication has expired.
+        """
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
+            page = context.new_page()
+
+            # Navigate to the course page
+            # Determine if course is a full URL or just an ID
+            if course.startswith("http://") or course.startswith("https://"):
+                course_url = course
+            else:
+                course_url = f"{self.base_url}/courses/{course}"
+
+            # Navigate to the memberships (roster) page
+            roster_url = course_url.rstrip("/") + "/memberships"
+            page.goto(roster_url)
+
+            # Check if we need to re-login
+            if "login" in page.url:
+                logger.error("Authentication session expired. Please re-authenticate.")
+                browser.close()
+                raise RuntimeError("Authentication session expired.")
+
+            # Wait for page to load
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+
+            # Find the download roster link
+            # It's an <a> element with href ending with "memberships.csv"
+            download_link = page.locator('a[href$="/memberships.csv"]').first
+
+            # Wait for the download link to be available
+            download_link.wait_for(state="visible", timeout=10000)
+
+            # Set up download expectation and click the link
+            with page.expect_download() as download_info:
+                download_link.click()
+            download = download_info.value
+
+            # Save the download
+            if save_dir is not None:
+                save_dir.mkdir(parents=True, exist_ok=True)
+                download_file_path = save_dir / download.suggested_filename
+            else:
+                download_file_path = Path(download.suggested_filename)
+
+            logger.info(f"Downloading roster to {download_file_path}")
+            download.save_as(download_file_path)
+
+            browser.close()
+        return download_file_path
+
+    def save_roster(
+        self,
+        course: str,
+        save_dir: Path | None = None,
+        headless: bool = True,
+    ) -> Path:
+        """Fetch and save the roster for a class on Gradescope.
+
+        Args:
+          * course: Gradescope course ID or URL to the course home page
+          * save_dir: target directory of the saved roster file (default: current working directory)
+          * headless (bool): Whether to run the browser in headless mode.
+
+        Returns:
+            Path: path to the output file
+        """
+        # Ensure authentication state exists; trigger a login flow if missing
+        if not self.auth_state_path.exists():
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            self.authenticate(headless=headless)
+
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                return self._save_roster_session(course, save_dir, headless)
+            except RuntimeError as e:
+                if attempt < max_retries:
+                    logger.warning(f"RuntimeError: {e} Authentication may have expired.")
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(headless=headless)
+                    continue
+                else:
+                    logger.error(f"Max retries exceeded. RuntimeError: {e}")
+                    raise
 
     def _extract_course_details(self, page: Page) -> dict:
         """Extract course details from a Gradescope course page.
@@ -312,9 +397,7 @@ class GradescopeClient:
 
             # Locate matching course boxes via Playwright locator filters
             course_boxes = courses_container.locator("a.courseBox")
-            by_name = course_boxes.filter(
-                has=page.locator("div.courseBox--name", has_text=course_regex)
-            )
+            by_name = course_boxes.filter(has=page.locator("div.courseBox--name", has_text=course_regex))
             # Fallback: match on any text inside the course box
             by_box_text = course_boxes.filter(has_text=course_regex)
 
@@ -340,9 +423,7 @@ class GradescopeClient:
                     # Extract course details
                     course_details = self._extract_course_details(page)
                     result.append(course_details)
-                    logger.info(
-                        f"Extracted details for course: {course_details.get('course_name', 'Unknown')}"
-                    )
+                    logger.info(f"Extracted details for course: {course_details.get('course_name', 'Unknown')}")
 
                     # Go back to the home page for the next iteration
                     page.goto(self.base_url)
@@ -375,9 +456,7 @@ class GradescopeClient:
         """
         # Check if authentication state exists; if not, authenticate first
         if not self.auth_state_path.exists():
-            logger.warning(
-                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
-            )
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
             self.authenticate(username=username, password=password, headless=headless)
 
         max_retries = 1
@@ -395,15 +474,11 @@ class GradescopeClient:
                 return result
             except RuntimeError as e:
                 if attempt < max_retries:
-                    logger.warning(
-                        f"RuntimeError: {e} Authentication may have expired."
-                    )
+                    logger.warning(f"RuntimeError: {e} Authentication may have expired.")
                     logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
-                    self.authenticate(
-                        username=username, password=password, headless=headless
-                    )
+                    self.authenticate(username=username, password=password, headless=headless)
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
@@ -491,3 +566,26 @@ def fetch_class_details(
         headless=headless,
         output=output,
     )
+
+
+def save_roster(
+    course: str,
+    save_dir: Path | None = None,
+    headless: bool = True,
+    base_url: str | None = None,
+    auth_state_path: Path | None = None,
+) -> Path:
+    """Fetch and save the roster for a class on Gradescope.
+
+    Args:
+        course: Gradescope course ID or URL to the course home page
+        save_dir: target directory of the saved roster file (default: current working directory)
+        headless: Run browser headless; default True for automation.
+        base_url: Override base URL for Gradescope.
+        auth_state_path: Path to stored authentication state JSON.
+
+    Returns:
+        Path to the saved roster file.
+    """
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    return client.save_roster(course=course, save_dir=save_dir, headless=headless)

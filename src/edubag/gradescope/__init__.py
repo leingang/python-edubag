@@ -16,6 +16,7 @@ from edubag.gradescope.scoresheet import (
 
 from .client import authenticate as client_authenticate
 from .client import fetch_class_details as client_fetch_class_details
+from .client import save_roster as client_save_roster
 from .client import sync_roster as client_sync_roster
 
 # Create a local Typer app for gradescope subcommands
@@ -24,16 +25,12 @@ app = typer.Typer(help="Gradescope management commands")
 
 @app.command("gs2bs")
 def gradescope_scores_file_to_brightspace_gradebook_csv(
-    input: Annotated[
-        Path, typer.Argument(help="Path to the Gradescope scores zip or CSV file.")
-    ],
+    input: Annotated[Path, typer.Argument(help="Path to the Gradescope scores zip or CSV file.")],
     output: Annotated[
         Path | None,
         typer.Argument(help="Path to the output Brightspace gradebook CSV file."),
     ] = None,
-    by_section: Annotated[
-        bool, typer.Option(help="Save separate files for each section.")
-    ] = False,
+    by_section: Annotated[bool, typer.Option(help="Save separate files for each section.")] = False,
 ):
     """Convert a Gradescope scores file to a Brightspace gradebook CSV file.
 
@@ -63,9 +60,7 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
         for section, section_scoresheet in sections_dict.items():
             gradebook = Gradebook.from_gradescope_scoresheet(section_scoresheet)
             section_output = output.with_stem(f"{output.stem}_section_{section}")
-            logger.info(
-                f"Writing Brightspace gradebook for section {section} to {section_output}"
-            )
+            logger.info(f"Writing Brightspace gradebook for section {section} to {section_output}")
             gradebook.to_csv(section_output)
     else:
         gradebook = Gradebook.from_gradescope_scoresheet(scoresheet)
@@ -80,12 +75,8 @@ client_app = typer.Typer(help="Automate Gradescope web client interactions")
 
 @client_app.command()
 def authenticate(
-    base_url: Annotated[
-        str | None, typer.Option(help="Override Gradescope base URL")
-    ] = None,
-    auth_state_path: Annotated[
-        Path | None, typer.Option(help="Path to save auth state JSON")
-    ] = None,
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to save auth state JSON")] = None,
     headless: Annotated[
         bool,
         typer.Option(
@@ -108,9 +99,7 @@ def authenticate(
 
 @client_app.command("sync-roster")
 def sync_roster(
-    course: Annotated[
-        str, typer.Argument(help="Gradescope course ID or URL to the course home page")
-    ],
+    course: Annotated[str, typer.Argument(help="Gradescope course ID or URL to the course home page")],
     notify: Annotated[bool, typer.Option(help="Notify added users")] = True,
     headless: Annotated[
         bool,
@@ -119,12 +108,8 @@ def sync_roster(
             help="Run browser headless (for automation) or headed (for debugging)",
         ),
     ] = True,
-    base_url: Annotated[
-        str | None, typer.Option(help="Override Gradescope base URL")
-    ] = None,
-    auth_state_path: Annotated[
-        Path | None, typer.Option(help="Path to stored auth state JSON")
-    ] = None,
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
 ) -> None:
     """Synchronize the course roster with the linked LMS."""
     ok = client_sync_roster(
@@ -152,12 +137,8 @@ def fetch_class_details(
             help="Run browser headless (for automation) or headed (for debugging)",
         ),
     ] = True,
-    base_url: Annotated[
-        str | None, typer.Option(help="Override Gradescope base URL")
-    ] = None,
-    auth_state_path: Annotated[
-        Path | None, typer.Option(help="Path to stored auth state JSON")
-    ] = None,
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
 ) -> None:
     """Fetch class details for a course offering and optionally save."""
     import json
@@ -174,6 +155,31 @@ def fetch_class_details(
     # If output is None, pretty-print to STDOUT
     if output is None:
         typer.echo(json.dumps(result, indent=2))
+
+
+@client_app.command("save-roster")
+def save_roster(
+    course: Annotated[str, typer.Argument(help="Gradescope course ID or URL to the course home page")],
+    save_dir: Annotated[Path | None, typer.Option(help="Target directory for the saved roster file")] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[str | None, typer.Option(help="Override Gradescope base URL")] = None,
+    auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
+) -> None:
+    """Download the roster for a Gradescope course."""
+    result_path = client_save_roster(
+        course=course,
+        save_dir=save_dir,
+        headless=headless,
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+    )
+    typer.echo(f"Roster saved to {result_path}")
 
 
 # Register the gradescope app as a subcommand with the main app

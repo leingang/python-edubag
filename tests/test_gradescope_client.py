@@ -48,9 +48,7 @@ class TestGradescopeClient:
         mock_course_name.count.return_value = 1
         mock_course_name.text_content.return_value = "Calculus II"
         mock_page.locator.side_effect = lambda selector: (
-            mock_course_name
-            if selector == "h1.courseHeader--title"
-            else Mock(count=lambda: 0)
+            mock_course_name if selector == "h1.courseHeader--title" else Mock(count=lambda: 0)
         )
 
         details = client._extract_course_details(mock_page)
@@ -93,12 +91,8 @@ class TestGradescopeClient:
         # Mock authentication state path to exist
         with patch("pathlib.Path.exists", return_value=True):
             # Mock the session method
-            with patch.object(
-                client, "_fetch_class_details_session", return_value=[]
-            ) as mock_session:
-                result = client.fetch_class_details(
-                    course_name="Calculus II", term=term, headless=True
-                )
+            with patch.object(client, "_fetch_class_details_session", return_value=[]) as mock_session:
+                result = client.fetch_class_details(course_name="Calculus II", term=term, headless=True)
 
                 # Verify the session method was called with the term
                 mock_session.assert_called_once_with("Calculus II", term, True)
@@ -131,3 +125,57 @@ class TestGradescopeClient:
                             )
 
                             assert result == [{"course_name": "Test Course"}]
+
+    def test_save_roster_with_course_id(self):
+        """Test save_roster constructs correct URL from course ID."""
+        client = GradescopeClient()
+
+        # Mock authentication state path to exist
+        with patch("pathlib.Path.exists", return_value=True):
+            # Mock the session method
+            with patch.object(client, "_save_roster_session", return_value=Path("roster.csv")) as mock_session:
+                result = client.save_roster(course="12345", headless=True)
+
+                # Verify the session method was called with the course ID
+                mock_session.assert_called_once_with("12345", None, True)
+                assert result == Path("roster.csv")
+
+    def test_save_roster_with_course_url(self):
+        """Test save_roster handles full course URL."""
+        client = GradescopeClient()
+
+        # Mock authentication state path to exist
+        with patch("pathlib.Path.exists", return_value=True):
+            # Mock the session method
+            with patch.object(
+                client,
+                "_save_roster_session",
+                return_value=Path("roster.csv"),
+            ) as mock_session:
+                result = client.save_roster(course="https://gradescope.com/courses/12345", headless=True)
+
+                # Verify the session method was called with the full URL
+                mock_session.assert_called_once_with("https://gradescope.com/courses/12345", None, True)
+                assert result == Path("roster.csv")
+
+    def test_save_roster_with_save_dir(self):
+        """Test save_roster with custom save directory."""
+        client = GradescopeClient()
+
+        # Use tempfile for cross-platform compatibility
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_dir = Path(tmpdir)
+
+            # Mock authentication state path to exist
+            with patch("pathlib.Path.exists", return_value=True):
+                # Mock the session method
+                with patch.object(
+                    client,
+                    "_save_roster_session",
+                    return_value=save_dir / "roster.csv",
+                ) as mock_session:
+                    result = client.save_roster(course="12345", save_dir=save_dir, headless=True)
+
+                    # Verify the session method was called with the save_dir
+                    mock_session.assert_called_once_with("12345", save_dir, True)
+                    assert result == save_dir / "roster.csv"
