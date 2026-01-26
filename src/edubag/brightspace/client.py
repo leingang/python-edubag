@@ -164,10 +164,12 @@ class BrightspaceClient:
         Returns:
             list[Path]: Paths to the downloaded gradebook files.
         """
-        # Check if authentication state exists; if not, raise an error
+        # Ensure authentication state exists; trigger a login flow if missing
         if not self.auth_state_path.exists():
-            logger.error(f"Auth state file not found at {self.auth_state_path}. Please authenticate first.")
-            raise RuntimeError("Authentication required. Please run authenticate() first.")
+            logger.warning(
+                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
+            )
+            self.authenticate(headless=headless)
 
         max_retries = 1
         for attempt in range(max_retries + 1):
@@ -176,9 +178,11 @@ class BrightspaceClient:
             except RuntimeError as e:
                 if attempt < max_retries:
                     logger.warning(f"RuntimeError: {e} Authentication may have expired.")
-                    logger.info("Please re-authenticate manually.")
+                    logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
+                    self.authenticate(headless=headless)
+                    continue
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                 raise
@@ -282,10 +286,12 @@ class BrightspaceClient:
         Returns:
             list[Path]: Paths to the downloaded attendance register files.
         """
-        # Check if authentication state exists; if not, raise an error
+        # Ensure authentication state exists; trigger a login flow if missing
         if not self.auth_state_path.exists():
-            logger.error(f"Auth state file not found at {self.auth_state_path}. Please authenticate first.")
-            raise RuntimeError("Authentication required. Please run authenticate() first.")
+            logger.warning(
+                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
+            )
+            self.authenticate(headless=headless)
 
         max_retries = 1
         for attempt in range(max_retries + 1):
@@ -294,9 +300,11 @@ class BrightspaceClient:
             except RuntimeError as e:
                 if attempt < max_retries:
                     logger.warning(f"RuntimeError: {e} Authentication may have expired.")
-                    logger.info("Please re-authenticate manually.")
+                    logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
+                    self.authenticate(headless=headless)
+                    continue
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                 raise
