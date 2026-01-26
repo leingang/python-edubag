@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import platformdirs
@@ -86,8 +87,10 @@ class GradescopeClient:
                     page.locator("#session_remember_me_label").click()
                     page.get_by_role("button", name="Log In").click()
                 else:
+                    page.get_by_role("textbox", name="Email").click()
                     print("Please enter your password in the browser window.")
             else:
+                page.get_by_role("textbox", name="Password").click()
                 print("Please enter your username and password in the browser window.")
 
             # Wait for successful login (redirect to dashboard or account page)
@@ -215,12 +218,25 @@ class GradescopeClient:
             # It's an <a> element with href ending with "memberships.csv"
             download_link = page.locator('a[href$="/memberships.csv"]').first
 
-            # Wait for the download link to be available
-            download_link.wait_for(state="visible", timeout=10000)
+            # Wait for the download link to be attached to the DOM
+            download_link.wait_for(state="attached", timeout=10000)
 
-            # Set up download expectation and click the link
+            # Check if the download link is visible
+            if not download_link.is_visible():
+                logger.debug("Download link is hidden, clicking 'More' button first")
+                # Click the "More" button to reveal hidden actions
+                more_button = page.locator(".js-toggleActionBarCollapsedMenu")
+                if more_button.count() > 0:
+                    more_button.click()
+                    # Give the UI a moment to update
+                    time.sleep(0.5)
+                else:
+                    logger.warning("'More' button not found")
+
+            # Set up download expectation and click the link using JavaScript
+            # This bypasses all visibility checks
             with page.expect_download() as download_info:
-                download_link.click()
+                download_link.evaluate("element => element.click()")
             download = download_info.value
 
             # Save the download
