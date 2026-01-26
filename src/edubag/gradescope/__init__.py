@@ -16,6 +16,7 @@ from edubag.gradescope.scoresheet import (
 
 from .client import authenticate as client_authenticate
 from .client import fetch_class_details as client_fetch_class_details
+from .client import save_roster as client_save_roster
 from .client import sync_roster as client_sync_roster
 
 # Create a local Typer app for gradescope subcommands
@@ -174,6 +175,39 @@ def fetch_class_details(
     # If output is None, pretty-print to STDOUT
     if output is None:
         typer.echo(json.dumps(result, indent=2))
+
+
+@client_app.command("save-roster")
+def save_roster(
+    course: Annotated[
+        str, typer.Argument(help="Gradescope course ID or URL to the course home page")
+    ],
+    save_dir: Annotated[
+        Path | None, typer.Option(help="Target directory for the saved roster file")
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Gradescope base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
+) -> None:
+    """Download the roster for a Gradescope course."""
+    result_path = client_save_roster(
+        course=course,
+        save_dir=save_dir,
+        headless=headless,
+        base_url=base_url,
+        auth_state_path=auth_state_path,
+    )
+    typer.echo(f"Roster saved to {result_path}")
 
 
 # Register the gradescope app as a subcommand with the main app
