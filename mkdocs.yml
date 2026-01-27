@@ -1,0 +1,47 @@
+site_name: EduBag
+site_description: Python tools for Bootstrapping, Aggregating, and Gathering learner data
+site_author: Matthew Leingang
+site_url: https://leingang.github.io/python-edubag/
+
+repo_name: python-edubag
+repo_url: https://github.com/leingang/python-edubag
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.instant
+    - navigation.tabs
+    - toc.integrate
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_bases: true
+            show_object_full_path: false
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - API Reference:
+    - edubag: api/edubag.md
+    - albert: api/albert.md
+    - brightspace: api/brightspace.md
+    - edstem: api/edstem.md
+    - gmail: api/gmail.md
+    - gradescope: api/gradescope.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets

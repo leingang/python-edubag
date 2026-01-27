@@ -35,6 +35,14 @@ coverage:
     uv run --python=3.13 --extra test coverage report -m
     uv run --python=3.13 --extra test coverage html
 
+# Build the documentation
+docs:
+    uv run --extra docs mkdocs build
+
+# Serve the documentation locally
+docs-serve:
+    uv run --extra docs mkdocs serve
+
 # Build the project, useful for checking that packaging is correct
 build:
     rm -rf build

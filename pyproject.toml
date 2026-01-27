@@ -35,6 +35,11 @@ test = [
     "ty", # checking types
     "ipdb", # debugging
 ]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
 
 [project.urls]
 bugs = "https://github.com/leingang/edubag/issues"
