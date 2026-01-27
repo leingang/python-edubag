@@ -39,6 +39,7 @@ docs = [
     "mkdocs",
     "mkdocs-material",
     "mkdocstrings[python]",
+  "mkdocs-typer2",
 ]
 
 [project.urls]

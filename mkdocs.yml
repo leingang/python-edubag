@@ -26,11 +26,14 @@ plugins:
             show_source: true
             show_bases: true
             show_object_full_path: false
+  - mkdocs-typer2:
+      engine: legacy
 
 nav:
   - Home: index.md
   - Installation: installation.md
   - Usage: usage.md
+  - CLI: cli.md
   - API Reference:
     - edubag: api/edubag.md
     - albert: api/albert.md
