@@ -14,10 +14,7 @@ from edubag.gradescope.scoresheet import (
     VersionedScoresheet,
 )
 
-from .client import authenticate as client_authenticate
-from .client import fetch_class_details as client_fetch_class_details
-from .client import save_roster as client_save_roster
-from .client import sync_roster as client_sync_roster
+from .client import GradescopeClient
 
 # Create a local Typer app for gradescope subcommands
 app = typer.Typer(help="Gradescope management commands")
@@ -86,11 +83,8 @@ def authenticate(
     ] = False,
 ) -> None:
     """Open Gradescope for login and persist authentication state."""
-    ok = client_authenticate(
-        base_url=base_url,
-        auth_state_path=auth_state_path,
-        headless=headless,
-    )
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    ok = client.authenticate(headless=headless)
     if ok:
         typer.echo("Authentication state saved.")
     else:
@@ -112,12 +106,11 @@ def sync_roster(
     auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
 ) -> None:
     """Synchronize the course roster with the linked LMS."""
-    ok = client_sync_roster(
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    ok = client.sync_roster(
         course=course,
         notify=notify,
         headless=headless,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
     if ok:
         typer.echo("Roster sync completed successfully.")
@@ -143,13 +136,12 @@ def fetch_class_details(
     """Fetch class details for a course offering and optionally save."""
     import json
 
-    result = client_fetch_class_details(
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    result = client.fetch_class_details(
         course_name=course_name,
         term=term,
         headless=headless,
         output=output,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
 
     # If output is None, pretty-print to STDOUT
@@ -172,12 +164,11 @@ def save_roster(
     auth_state_path: Annotated[Path | None, typer.Option(help="Path to stored auth state JSON")] = None,
 ) -> None:
     """Download the roster for a Gradescope course."""
-    result_path = client_save_roster(
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    result_path = client.save_roster(
         course=course,
         save_dir=save_dir,
         headless=headless,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
     typer.echo(f"Roster saved to {result_path}")
 

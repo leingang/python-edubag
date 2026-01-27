@@ -6,9 +6,21 @@ import platformdirs
 from loguru import logger
 from playwright.sync_api import sync_playwright
 
+from edubag.clients import LMSClient
 
-class BrightspaceClient:
-    """Client to interact with the Brightspace learning platform."""
+
+class BrightspaceClient(LMSClient):
+    """Client to interact with the Brightspace learning platform.
+
+    This client provides automated browser-based interactions with NYU's Brightspace
+    (D2L) learning management system for downloading gradebooks, attendance, and
+    other course data.
+
+    Note on headless parameter:
+        Methods that accept `headless` parameter default to:
+        - `False` for `authenticate()` - interactive login with MFA required
+        - `True` for other operations - automated downloads benefit from headless mode
+    """
 
     @staticmethod
     def _default_auth_state_path() -> Path:
@@ -309,73 +321,3 @@ class BrightspaceClient:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                 raise
         return []
-
-
-# Convenience module-level functions for CLI and simple scripting
-def authenticate(
-    username: str | None = None,
-    password: str | None = None,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-    headless: bool = False,
-) -> bool:
-    """Authenticate to Brightspace using Playwright and persist session state.
-
-    Args:
-        username: NetID to log in with. If None, user must enter manually in browser.
-        password: Password for login. If None, user must enter manually in browser.
-        base_url: Override base URL for Brightspace.
-        auth_state_path: Path to save authentication state JSON.
-        headless: Run browser headless; default False for interactive login.
-
-    Returns:
-        True on success, False otherwise.
-    """
-    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.authenticate(username=username, password=password, headless=headless)
-
-
-def save_gradebook(
-    course: str,
-    save_dir: Path | None = None,
-    headless: bool = True,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> list[Path]:
-    """Fetch and save the gradebook for a course using stored auth state.
-
-    Args:
-        course: The course ID or full URL to the course
-        save_dir: directory to save the file in (default: current working directory)
-        headless: Run browser headless; default True for automation.
-        base_url: Override base URL for Brightspace.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        List of saved file paths.
-    """
-    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.save_gradebook(course=course, save_dir=save_dir, headless=headless)
-
-
-def save_attendance(
-    course: str,
-    save_dir: Path | None = None,
-    headless: bool = True,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> list[Path]:
-    """Fetch and save the attendance registers for a course using stored auth state.
-
-    Args:
-        course: The course ID or full URL to the course
-        save_dir: directory to save the file in (default: current working directory)
-        headless: Run browser headless; default True for automation.
-        base_url: Override base URL for Brightspace.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        List of saved file paths.
-    """
-    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.save_attendance(course=course, save_dir=save_dir, headless=headless)

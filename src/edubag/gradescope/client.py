@@ -12,10 +12,21 @@ from loguru import logger
 from playwright.sync_api import Page, sync_playwright
 
 from edubag.albert.term import Term
+from edubag.clients import LMSClient
 
 
-class GradescopeClient:
-    """Client to interact with the Gradescope platform."""
+class GradescopeClient(LMSClient):
+    """Client to interact with the Gradescope platform.
+
+    This client provides automated browser-based interactions with Gradescope
+    for managing rosters, downloading assignments, syncing with LMS, and other
+    course management tasks.
+
+    Note on headless parameter:
+        Methods that accept `headless` parameter default to:
+        - `False` for `authenticate()` - interactive login may require manual steps
+        - `True` for other operations - automated operations benefit from headless mode
+    """
 
     base_url = "https://gradescope.com"
 
@@ -499,109 +510,3 @@ class GradescopeClient:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
         return []
-
-
-# Convenience module-level functions for CLI and simple scripting
-def authenticate(
-    username: str | None = None,
-    password: str | None = None,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-    headless: bool = False,
-) -> bool:
-    """Authenticate to Gradescope using Playwright and persist session state.
-
-    Args:
-        username: Username to log in with. If None, attempts to load from environment.
-        password: Password for login. If None, attempts to load from environment.
-        base_url: Override base URL for Gradescope.
-        auth_state_path: Path to save authentication state JSON.
-        headless: Run browser headless; default False for interactive login.
-
-    Returns:
-        True on success, False otherwise.
-    """
-    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.authenticate(username=username, password=password, headless=headless)
-
-
-def sync_roster(
-    course: str,
-    notify: bool = True,
-    headless: bool = True,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> bool:
-    """Synchronize the course roster with the linked LMS.
-
-    Args:
-        course: Gradescope course ID or URL to the course home page
-        notify: notify added users
-        headless: Run browser headless; default True for automation.
-        base_url: Override base URL for Gradescope.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        True on success, False otherwise.
-    """
-    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.sync_roster(course=course, notify=notify, headless=headless)
-
-
-def fetch_class_details(
-    course_name: str,
-    term: str | Term,
-    username: str | None = None,
-    password: str | None = None,
-    headless: bool = True,
-    output: Path | None = None,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> list[dict]:
-    """Fetch class details for a course offering and optionally save.
-
-    Args:
-        course_name: The course name to match in Gradescope.
-        term: A term string (e.g., "Fall 2025") or `Term`.
-        username: Username to log in with. If None, attempts to load from environment.
-        password: Password for login. If None, attempts to load from environment.
-        headless: Run browser headless; default True for automation.
-        output: Path to save output JSON; if None, doesn't save.
-        base_url: Override base URL for Gradescope.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        List of dictionaries with class details.
-    """
-    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.fetch_class_details(
-        course_name=course_name,
-        term=term,
-        username=username,
-        password=password,
-        headless=headless,
-        output=output,
-    )
-
-
-def save_roster(
-    course: str,
-    save_dir: Path | None = None,
-    headless: bool = True,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> Path:
-    """Fetch and save the roster for a class on Gradescope.
-
-    Args:
-        course: Gradescope course ID or URL to the course home page
-        save_dir: target directory of the saved roster file (default: current working directory)
-        headless: Run browser headless; default True for automation.
-        base_url: Override base URL for Gradescope.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        Path to the saved roster file.
-    """
-    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.save_roster(course=course, save_dir=save_dir, headless=headless)

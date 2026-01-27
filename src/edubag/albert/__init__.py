@@ -9,15 +9,7 @@ from rich.progress import track
 from edubag import app as main_app
 from edubag.gradescope.roster import GradescopeRoster
 
-from .client import (
-    authenticate as client_authenticate,
-)
-from .client import (
-    fetch_and_save_rosters as client_fetch_and_save_rosters,
-)
-from .client import (
-    fetch_class_details as client_fetch_class_details,
-)
+from .client import AlbertClient
 from .roster import AlbertRoster
 
 # Create a local Typer app for albert subcommands
@@ -132,11 +124,8 @@ def authenticate(
     ] = False,
 ) -> None:
     """Open Albert for login and persist authentication state."""
-    ok = client_authenticate(
-        base_url=base_url,
-        auth_state_path=auth_state_path,
-        headless=headless,
-    )
+    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
+    ok = client.authenticate(headless=headless)
     if ok:
         typer.echo("Authentication state saved.")
     else:
@@ -165,13 +154,12 @@ def fetch_rosters(
     ] = None,
 ) -> None:
     """Fetch class rosters for a course offering and save files."""
-    paths = client_fetch_and_save_rosters(
+    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
+    paths = client.fetch_and_save_rosters(
         course_name=course_name,
         term=term,
         save_path=save_path,
         headless=headless,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
     for p in paths:
         typer.echo(str(p))
@@ -197,13 +185,12 @@ def fetch_class_details(
     ] = None,
 ) -> None:
     """Fetch class details for a course offering and optionally save."""
-    result = client_fetch_class_details(
+    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
+    result = client.fetch_class_details(
         course_name=course_name,
         term=term,
         headless=headless,
         output=output,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
 
     # If output is None, pretty-print to STDOUT

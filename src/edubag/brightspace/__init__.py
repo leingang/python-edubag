@@ -15,15 +15,7 @@ from edubag.edstem.analytics import EdstemAnalytics
 from edubag.sources import OfficeHoursData
 from edubag.transformers import GradebookTransformer
 
-from .client import (
-    authenticate as client_authenticate,
-)
-from .client import (
-    save_attendance as client_save_attendance,
-)
-from .client import (
-    save_gradebook as client_save_gradebook,
-)
+from .client import BrightspaceClient
 
 # Create brightspace subcommands app
 app = typer.Typer(help="Brightspace management commands")
@@ -637,11 +629,8 @@ def authenticate(
     ] = False,
 ) -> None:
     """Open Brightspace for login and persist authentication state."""
-    ok = client_authenticate(
-        base_url=base_url,
-        auth_state_path=auth_state_path,
-        headless=headless,
-    )
+    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
+    ok = client.authenticate(headless=headless)
     if ok:
         typer.echo("Authentication state saved.")
     else:
@@ -669,12 +658,11 @@ def save_gradebook(
     ] = None,
 ) -> None:
     """Fetch and save the gradebook for a course."""
-    paths = client_save_gradebook(
+    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
+    paths = client.save_gradebook(
         course=course,
         save_dir=save_dir,
         headless=headless,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
     for p in paths:
         typer.echo(str(p))
@@ -701,12 +689,11 @@ def save_attendance(
     ] = None,
 ) -> None:
     """Fetch and save the attendance registers for a course."""
-    paths = client_save_attendance(
+    client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
+    paths = client.save_attendance(
         course=course,
         save_dir=save_dir,
         headless=headless,
-        base_url=base_url,
-        auth_state_path=auth_state_path,
     )
     for p in paths:
         typer.echo(str(p))

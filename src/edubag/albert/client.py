@@ -10,6 +10,7 @@ from loguru import logger
 from playwright.sync_api import Locator, Page, sync_playwright
 
 from edubag.albert.term import Term
+from edubag.clients import LMSClient
 
 
 def _normalize_label(label: str) -> str:
@@ -27,8 +28,17 @@ def _normalize_label(label: str) -> str:
     return normalized
 
 
-class AlbertClient:
-    """Client to interact with the Albert learning platform."""
+class AlbertClient(LMSClient):
+    """Client to interact with the Albert learning platform.
+
+    This client provides automated browser-based interactions with NYU's Albert
+    system for fetching course rosters, class details, and other academic data.
+
+    Note on headless parameter:
+        Methods that accept `headless` parameter default to:
+        - `False` for `authenticate()` - interactive login with MFA required
+        - `True` for other operations - automated scraping benefits from headless mode
+    """
 
     base_url = "https://sis.portal.nyu.edu/psp/ihprod/EMPLOYEE/EMPL/?cmd=start"
 
@@ -539,99 +549,3 @@ class AlbertClient:
                     logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
         return []
-
-
-# Convenience module-level functions for CLI and simple scripting
-def authenticate(
-    username: str | None = None,
-    password: str | None = None,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-    headless: bool = False,
-) -> bool:
-    """Authenticate to Albert using Playwright and persist session state.
-
-    Args:
-        username: NetID to log in with. If None, user must enter manually in browser.
-        password: Password for login. If None, user must enter manually in browser.
-        base_url: Override base URL for Albert.
-        auth_state_path: Path to save authentication state JSON.
-        headless: Run browser headless; default False for interactive login.
-
-    Returns:
-        True on success, False otherwise.
-    """
-    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.authenticate(username=username, password=password, headless=headless)
-
-
-def fetch_and_save_rosters(
-    course_name: str,
-    term: str | Term,
-    save_path: Path | None = None,
-    username: str | None = None,
-    password: str | None = None,
-    headless: bool = True,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> list[Path]:
-    """Fetch rosters and save them to disk using stored auth state.
-
-    Args:
-        course_name: The course name to match in Albert.
-        term: A term string (e.g., "Fall 2025") or `Term`.
-        save_path: Directory to save roster files; defaults to CWD.
-        username: NetID to log in with. If None, user must enter manually.
-        password: Password for login. If None, user must enter manually.
-        headless: Run browser headless; default True for automation.
-        base_url: Override base URL for Albert.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        List of saved file paths.
-    """
-    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.fetch_and_save_rosters(
-        course_name=course_name,
-        term=term,
-        save_path=save_path,
-        username=username,
-        password=password,
-        headless=headless,
-    )
-
-
-def fetch_class_details(
-    course_name: str,
-    term: str | Term,
-    username: str | None = None,
-    password: str | None = None,
-    headless: bool = True,
-    output: Path | None = None,
-    base_url: str | None = None,
-    auth_state_path: Path | None = None,
-) -> list[dict]:
-    """Fetch class details for a course offering and optionally save.
-
-    Args:
-        course_name: The course name to match in Albert.
-        term: A term string (e.g., "Fall 2025") or `Term`.
-        username: NetID to log in with. If None, user must enter manually.
-        password: Password for login. If None, user must enter manually.
-        headless: Run browser headless; default True for automation.
-        output: Path to save output JSON; if None, doesn't save.
-        base_url: Override base URL for Albert.
-        auth_state_path: Path to stored authentication state JSON.
-
-    Returns:
-        List of dictionaries with class details.
-    """
-    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
-    return client.fetch_class_details(
-        course_name=course_name,
-        term=term,
-        username=username,
-        password=password,
-        headless=headless,
-        output=output,
-    )
