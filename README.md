@@ -1,13 +1,11 @@
 # EduBag
 
-![PyPI version](https://img.shields.io/pypi/v/python-edubag.svg)
-[![Documentation Status](https://readthedocs.org/projects/python-edubag/badge/?version=latest)](https://python-edubag.readthedocs.io/en/latest/?version=latest)
+[![Documentation Status](https://leingang.github.io/python-edubag/)](https://leingang.github.io/python-edubag/)
 
 Python tools for Bootstrapping, Aggregating, and Gathering learner data
 
-* PyPI package: https://pypi.org/project/python-edubag/
 * Free software: MIT License
-* Documentation: https://python-edubag.readthedocs.io.
+* Documentation: https://leingang.github.io/python-edubag/
 
 ## Features
 
