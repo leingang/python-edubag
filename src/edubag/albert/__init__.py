@@ -125,10 +125,11 @@ def authenticate(
 ) -> None:
     """Open Albert for login and persist authentication state."""
     client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
-    ok = client.authenticate(headless=headless)
-    if ok:
+    try:
+        client.authenticate(headless=headless)
         typer.echo("Authentication state saved.")
-    else:
+    except Exception as e:
+        typer.echo(f"Authentication failed: {e}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -136,7 +137,7 @@ def authenticate(
 def fetch_rosters(
     course_name: Annotated[str, typer.Argument(help="Course name to match in Albert")],
     term: Annotated[str, typer.Argument(help="Term, e.g., 'Fall 2025'")],
-    save_path: Annotated[
+    save_dir: Annotated[
         Path | None, typer.Option(help="Directory to save roster files")
     ] = None,
     headless: Annotated[
@@ -158,7 +159,7 @@ def fetch_rosters(
     paths = client.fetch_and_save_rosters(
         course_name=course_name,
         term=term,
-        save_path=save_path,
+        save_dir=save_dir,
         headless=headless,
     )
     for p in paths:

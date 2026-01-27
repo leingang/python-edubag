@@ -84,10 +84,11 @@ def authenticate(
 ) -> None:
     """Open Gradescope for login and persist authentication state."""
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    ok = client.authenticate(headless=headless)
-    if ok:
+    try:
+        client.authenticate(headless=headless)
         typer.echo("Authentication state saved.")
-    else:
+    except Exception as e:
+        typer.echo(f"Authentication failed: {e}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -107,14 +108,15 @@ def sync_roster(
 ) -> None:
     """Synchronize the course roster with the linked LMS."""
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    ok = client.sync_roster(
-        course=course,
-        notify=notify,
-        headless=headless,
-    )
-    if ok:
+    try:
+        client.sync_roster(
+            course=course,
+            notify=notify,
+            headless=headless,
+        )
         typer.echo("Roster sync completed successfully.")
-    else:
+    except Exception as e:
+        typer.echo(f"Roster sync failed: {e}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -165,12 +167,13 @@ def save_roster(
 ) -> None:
     """Download the roster for a Gradescope course."""
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
-    result_path = client.save_roster(
+    result_paths = client.save_roster(
         course=course,
         save_dir=save_dir,
         headless=headless,
     )
-    typer.echo(f"Roster saved to {result_path}")
+    for p in result_paths:
+        typer.echo(f"Roster saved to {p}")
 
 
 # Register the gradescope app as a subcommand with the main app

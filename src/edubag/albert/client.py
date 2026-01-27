@@ -58,7 +58,7 @@ class AlbertClient(LMSClient):
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless=False) -> bool:
+    def authenticate(self, username: str | None = None, password: str | None = None, headless=False) -> None:
         """Log into Albert and save the authentication state.
 
         Args:
@@ -66,8 +66,8 @@ class AlbertClient(LMSClient):
             password (str | None): Password for login. If None, user must enter manually in browser.
             headless (bool): Whether to run the browser in headless mode. Headless mode requires username and password.
 
-        Returns:
-            bool: True if authentication was successful, False otherwise.
+        Raises:
+            RuntimeError: If authentication fails.
         """
         if username is None or password is None:
             headless = False
@@ -105,7 +105,6 @@ class AlbertClient(LMSClient):
             logger.debug(f"Authentication state saved at {self.auth_state_path}")
 
             browser.close()
-        return True
 
     def _get_courses_paginated(self, page: Page, course_name: str) -> Generator[Locator]:
         """Iterator that yields course locators across all pages with pagination.
@@ -346,7 +345,7 @@ class AlbertClient(LMSClient):
         self,
         course_name: str,
         term: str | Term,
-        save_path: Path | None = None,
+        save_dir: Path | None = None,
         headless: bool = True,
     ) -> list[Path]:
         """Internal method to fetch rosters in a single browser session.
@@ -392,7 +391,7 @@ class AlbertClient(LMSClient):
 
             # Process all courses across all pages
             for course in self._get_courses_paginated(page, course_name):
-                download_path = self._save_roster_for_course(course, save_path)
+                download_path = self._save_roster_for_course(course, save_dir)
                 result_paths.append(download_path)
 
             browser.close()
@@ -402,7 +401,7 @@ class AlbertClient(LMSClient):
         self,
         course_name: str,
         term: str | Term,
-        save_path: Path | None = None,
+        save_dir: Path | None = None,
         username: str | None = None,
         password: str | None = None,
         headless: bool = True,
@@ -413,7 +412,7 @@ class AlbertClient(LMSClient):
         Args:
           * course_name (str): The name of the course.
           * term (str | Term): The term of the course.
-          * save_path (Path | None): Directory to save the rosters. If None,
+          * save_dir (Path | None): Directory to save the rosters. If None,
             uses default directory.
           * username (str | None): NetID to log in with. If None, user must enter manually.
           * password (str | None): Password for login. If None, user must enter manually.
@@ -430,7 +429,7 @@ class AlbertClient(LMSClient):
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
-                return self._fetch_rosters_session(course_name, term, save_path, headless)
+                return self._fetch_rosters_session(course_name, term, save_dir, headless)
             except (TimeoutError, RuntimeError) as e:
                 if attempt < max_retries:
                     logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")

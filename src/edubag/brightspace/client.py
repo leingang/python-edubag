@@ -40,7 +40,7 @@ class BrightspaceClient(LMSClient):
         else:
             self.auth_state_path = self._default_auth_state_path()
 
-    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> bool:
+    def authenticate(self, username: str | None = None, password: str | None = None, headless: bool = False) -> None:
         """Log into Brightspace and save the authentication state.
 
         Args:
@@ -48,8 +48,8 @@ class BrightspaceClient(LMSClient):
             password (str | None): Password for login. If None, user must enter manually in browser.
             headless (bool): Whether to run the browser in headless mode. Headless mode requires username and password.
 
-        Returns:
-            bool: True if authentication was successful, False otherwise.
+        Raises:
+            RuntimeError: If authentication fails.
         """
         if username is None or password is None:
             headless = False
@@ -94,7 +94,6 @@ class BrightspaceClient(LMSClient):
             logger.debug(f"Authentication state saved at {self.auth_state_path}")
 
             browser.close()
-        return True
 
     def _save_gradebook_session(
         self,

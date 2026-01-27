@@ -36,7 +36,7 @@ class LMSClient(ABC):
         username: str | None = None,
         password: str | None = None,
         headless: bool = False,
-    ) -> bool:
+    ) -> None:
         """Authenticate to the LMS platform and save session state.
 
         Args:
@@ -45,8 +45,8 @@ class LMSClient(ABC):
             headless: Run browser in headless mode. Defaults to False because
                 authentication typically requires interactive steps (MFA, etc.).
 
-        Returns:
-            True if authentication was successful, False otherwise.
+        Raises:
+            RuntimeError: If authentication fails.
 
         Note:
             Authentication state is persisted to `self.auth_state_path` for reuse

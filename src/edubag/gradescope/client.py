@@ -51,7 +51,7 @@ class GradescopeClient(LMSClient):
         username: str | None = None,
         password: str | None = None,
         headless: bool = False,
-    ) -> bool:
+    ) -> None:
         """Log into Gradescope and save the authentication state.
 
         Args:
@@ -59,8 +59,8 @@ class GradescopeClient(LMSClient):
             password (str | None): Password for login. If None, user must enter manually in browser.
             headless (bool): Whether to run the browser in headless mode. Headless mode requires username and password.
 
-        Returns:
-            bool: True if authentication was successful, False otherwise.
+        Raises:
+            RuntimeError: If authentication fails.
         """
         # Load environment variables from .env file
         load_dotenv()
@@ -111,9 +111,8 @@ class GradescopeClient(LMSClient):
             logger.debug(f"Authentication state saved at {self.auth_state_path}")
 
             browser.close()
-        return True
 
-    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> bool:
+    def sync_roster(self, course: str, notify: bool = True, headless: bool = True) -> None:
         """Synchronize the course roster with the linked LMS.
 
         Args:
@@ -121,8 +120,8 @@ class GradescopeClient(LMSClient):
             notify: notify added users
             headless: Whether to run the browser in headless mode
 
-        Returns:
-            success value
+        Raises:
+            RuntimeError: If sync fails or authentication session expired.
         """
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
@@ -139,9 +138,8 @@ class GradescopeClient(LMSClient):
 
             # Check if we need to re-login
             if "login" in page.url:
-                logger.error("Authentication session expired. Please re-authenticate.")
                 browser.close()
-                return False
+                raise RuntimeError("Authentication session expired. Please re-authenticate.")
 
             try:
                 # Navigate to Roster page
@@ -183,12 +181,10 @@ class GradescopeClient(LMSClient):
                     logger.info("Roster sync succeeded with no changes.")
 
                 browser.close()
-                return True
 
             except Exception as e:
-                logger.error(f"Error during roster sync: {e}")
                 browser.close()
-                return False
+                raise RuntimeError(f"Error during roster sync: {e}") from e
 
     def _save_roster_session(
         self,
@@ -268,7 +264,7 @@ class GradescopeClient(LMSClient):
         course: str,
         save_dir: Path | None = None,
         headless: bool = True,
-    ) -> Path:
+    ) -> list[Path]:
         """Fetch and save the roster for a class on Gradescope.
 
         Args:
@@ -277,7 +273,10 @@ class GradescopeClient(LMSClient):
           * headless (bool): Whether to run the browser in headless mode.
 
         Returns:
-            Path: path to the output file
+            list[Path]: list containing path to the saved roster file
+            
+        Raises:
+            RuntimeError: If roster download fails or authentication expired.
         """
         # Ensure authentication state exists; trigger a login flow if missing
         if not self.auth_state_path.exists():
@@ -287,7 +286,8 @@ class GradescopeClient(LMSClient):
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
-                return self._save_roster_session(course, save_dir, headless)
+                result_path = self._save_roster_session(course, save_dir, headless)
+                return [result_path]
             except RuntimeError as e:
                 if attempt < max_retries:
                     logger.warning(f"RuntimeError: {e} Authentication may have expired.")

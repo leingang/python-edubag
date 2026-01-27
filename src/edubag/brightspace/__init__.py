@@ -630,10 +630,11 @@ def authenticate(
 ) -> None:
     """Open Brightspace for login and persist authentication state."""
     client = BrightspaceClient(base_url=base_url, auth_state_path=auth_state_path)
-    ok = client.authenticate(headless=headless)
-    if ok:
+    try:
+        client.authenticate(headless=headless)
         typer.echo("Authentication state saved.")
-    else:
+    except Exception as e:
+        typer.echo(f"Authentication failed: {e}", err=True)
         raise typer.Exit(code=1)
 
 
