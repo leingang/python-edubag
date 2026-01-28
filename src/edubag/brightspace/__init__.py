@@ -34,7 +34,7 @@ def build_attendance_gradebook(
         Path | None,
         typer.Option(
             help="Output Brightspace gradebook CSV path. If omitted, writes to "
-            "data/processed/brightspace/grades/<today>/attendance.csv"
+            "`data/processed/brightspace/grades/<today>/attendance.csv`"
         ),
     ] = None,
     column_name: Annotated[

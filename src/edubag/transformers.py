@@ -34,7 +34,7 @@ class GradebookTransformer:
     def _parse_category_columns(self) -> None:
         """Parse column headers to extract category and item information.
         
-        Expected format: "Item Name <Numeric MaxPoints:5 Category:Pre-Quizzes ...>"
+        Expected format: `"Item Name <Numeric MaxPoints:5 Category:Pre-Quizzes ...>"`
         Stores mapping of category -> list of column names.
         """
         for col in self.df.columns:
@@ -113,7 +113,7 @@ class GradebookTransformer:
         """Count positive scores in a list of columns.
         
         A score is positive if:
-        - It's numeric and > 0
+        - It's numeric and `> 0`
         - It's not "Exempt"
         - It's not NaN or empty string
         
@@ -212,7 +212,7 @@ class SourceTransformer:
         Args:
             columns: List of column names
             target_col: Name for the result column
-            threshold: Values > threshold count as positive
+            threshold: Values `> threshold` count as positive
         
         Returns:
             self (for method chaining)

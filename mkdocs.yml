@@ -27,7 +27,8 @@ plugins:
             show_bases: true
             show_object_full_path: false
   - mkdocs-typer2:
-      engine: legacy
+      engine: native
+      pretty: true
 
 nav:
   - Home: index.md
@@ -35,12 +36,12 @@ nav:
   - Usage: usage.md
   - CLI: cli.md
   - API Reference:
-    - edubag: api/edubag.md
     - albert: api/albert.md
     - brightspace: api/brightspace.md
     - edstem: api/edstem.md
     - gmail: api/gmail.md
     - gradescope: api/gradescope.md
+    - edubag: api/edubag.md
 
 markdown_extensions:
   - pymdownx.highlight:

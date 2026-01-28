@@ -51,7 +51,7 @@ def generate_filter_xml(
                        a label, each roster gets its own label.
     
     Returns:
-        ET.Element: The root <feed> element of the Gmail filter XML
+        ET.Element: The root `<feed>` element of the Gmail filter XML
     """
     if not rosters:
         raise ValueError("At least one roster must be provided")
@@ -63,7 +63,7 @@ def generate_filter_xml(
     # Get the current time in ISO 8601 format with 'Z' for UTC
     updated_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    # Create the root element <feed>
+    # Create the root element `<feed>`
     feed = ET.Element(
         "feed",
         attrib={

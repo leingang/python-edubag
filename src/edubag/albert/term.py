@@ -86,6 +86,6 @@ class Term(object):
         Args:
             other (Term): Another Term object to compare with.
         Returns:
-            int: Negative if self < other, zero if self == other, positive if self > other.
+            int: Negative if `self < other`, zero if `self == other`, positive if `self > other`.
         """
         return self.code - other.code
