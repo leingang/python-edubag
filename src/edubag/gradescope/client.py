@@ -349,6 +349,23 @@ class GradescopeClient(LMSClient):
             if instructors:
                 course_details["instructors"] = instructors
 
+        # Navigate to the course edit page to extract LMS resource information
+        edit_url = page.url.rstrip("/") + "/edit"
+        page.goto(edit_url)
+        page.wait_for_load_state("domcontentloaded", timeout=10000)
+
+        # Extract LMS resource information from the edit page
+        lms_resource = page.locator("div.lmsResource[data-lms-id]")
+        if lms_resource.count() > 0:
+            lms_id = lms_resource.get_attribute("data-lms-id")
+            if lms_id:
+                course_details["lms_course_id"] = lms_id
+            
+            lms_text = lms_resource.text_content()
+            if lms_text and "Linked to:" in lms_text:
+                lms_name = lms_text.split("Linked to:", 1)[1].strip()
+                course_details["lms_course_name"] = lms_name
+
         return course_details
 
     def _fetch_class_details_session(
