@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, List
 
 import typer
 from loguru import logger
@@ -65,6 +65,48 @@ def gradescope_scores_file_to_brightspace_gradebook_csv(
         gradebook.to_csv(output)
     return
 
+@app.command("bs2gs")
+def add_sections_to_roster_from_brightspace(
+    roster_csv: Annotated[Path, typer.Argument(help="Path to the Gradescope roster CSV file.")],
+    brightspace_csv: Annotated[Path, typer.Argument(help="Path to the Brightspace gradebook CSV file.")],
+    output_csv: Annotated[
+        Path | None,
+        typer.Argument(help="Path to the output Gradescope roster CSV file with sections added."),
+    ] = None,
+) -> List[Path]:
+    """Add section information to a Gradescope roster from a Brightspace gradebook CSV.
+
+    The output CSV file can be specified with `output_csv`. If not provided,
+    the output file is created in the same directory as the input roster file,
+    with '_with_sections' appended to the stem of the filename.
+
+    Args:
+        roster_csv (Path): Path to the Gradescope roster CSV file.
+        brightspace_csv (Path): Path to the Brightspace gradebook CSV file.
+        output_csv (Path | None): Path to the output Gradescope roster CSV file.
+
+    Returns:
+        List[Path]: List containing the path to the output CSV file.
+    """
+    # Load the Gradescope roster
+    gs_roster = GradescopeRoster.from_csv(roster_csv)
+
+    # Load the Brightspace gradebook
+    bs_gradebook = Gradebook.from_csv(brightspace_csv)
+
+    gs_roster.update_sections_from_brightspace_gradebook(bs_gradebook)
+
+    # Save the updated roster with sections
+    if output_csv is None:
+        output_csv = roster_csv.with_stem(f"{roster_csv.stem}_with_sections")
+    try:
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
+        gs_roster.to_csv(output_csv)
+        logger.success(f"Saved updated Gradescope roster with sections to {output_csv}")
+        return [output_csv]
+    except Exception as e:
+        logger.error(f"Failed to save updated Gradescope roster: {e}")
+        return []
 
 # Nested Typer app for web client automation
 client_app = typer.Typer(help="Automate Gradescope web client interactions")

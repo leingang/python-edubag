@@ -100,14 +100,63 @@ class GradescopeRoster(object):
 
         Returns: None
         """
-        raise NotImplementedError
+        if "Email" not in self.students.columns:
+            raise ValueError("Roster must have an 'Email' column")
+
+        if "Email" not in gradebook.grades.columns:
+            raise ValueError("Gradebook must have an 'Email' column")
+
+        sections_col = None
+        for candidate in ["Sections", "Section Membership", "Section Memberships"]:
+            if candidate in gradebook.grades.columns:
+                sections_col = candidate
+                break
+
+        if sections_col is None:
+            raise ValueError(
+                "Gradebook must have a 'Sections' or 'Section Membership' column"
+            )
+
+        bs_sections = gradebook.grades[["Email", sections_col]].rename(
+            columns={sections_col: "_brightspace_sections"}
+        )
+
+        merged_df = pd.merge(self.students, bs_sections, on="Email", how="left")
+
+        def extract_and_pad_sections(sections_string):
+            if pd.isna(sections_string):
+                return [None, None]
+
+            entries = [s.strip() for s in str(sections_string).split(",") if s.strip()]
+            codes = []
+            for entry in entries:
+                match = re.search(r"(\d{1,3})\s*$", entry)
+                if match:
+                    codes.append(match.group(1))
+                    continue
+                match = re.search(r"Section\s*(\d+)", entry)
+                if match:
+                    codes.append(match.group(1))
+
+            if not codes:
+                return [None, None]
+
+            padded_codes = [code.zfill(3) for code in codes]
+            sorted_codes = sorted(padded_codes)
+            return (sorted_codes + [None, None])[:2]
+
+        merged_df[["Section", "Section 2"]] = merged_df[
+            "_brightspace_sections"
+        ].apply(lambda x: pd.Series(extract_and_pad_sections(x)))
+
+        self.students = merged_df.drop(columns=["_brightspace_sections"])
 
 
 if __name__ == "__main__":
     # assume the first argument is a path and try to parse it
     import sys
 
-    path = sys.argv[1]
+    path = Path(sys.argv[1])
     roster = GradescopeRoster.from_csv(path)
     if roster:
         print("\n--- Roster DataFrame ---")
