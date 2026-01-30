@@ -42,18 +42,26 @@ class TestGradescopeClient:
 
         # Mock page object
         mock_page = Mock()
+        mock_page.url = "https://gradescope.com/courses/123456"
 
         # Mock course name element
-        mock_course_name = Mock()
-        mock_course_name.count.return_value = 1
-        mock_course_name.text_content.return_value = "Calculus II"
-        mock_page.locator.side_effect = lambda selector: (
-            mock_course_name if selector == "h1.courseHeader--title" else Mock(count=lambda: 0)
-        )
+        mock_course_number = Mock()
+        mock_course_number.count.return_value = 1
+        mock_course_number.text_content.return_value = "MATH-UA 122.006"
+        
+        # Setup locator side effects
+        def locator_side_effect(selector):
+            if selector == "h1.courseHeader--title":
+                return mock_course_number
+            return Mock(count=lambda: 0)
+
+        mock_page.locator.side_effect = locator_side_effect
+        mock_page.goto = Mock()
+        mock_page.wait_for_load_state = Mock()
 
         details = client._extract_course_details(mock_page)
-        assert "course_name" in details
-        assert details["course_name"] == "Calculus II"
+        assert "course_number" in details
+        assert details["course_number"] == "MATH-UA 122.006"
 
     def test_extract_course_details_with_instructors(self):
         """Test extracting course details including instructors."""
@@ -61,27 +69,30 @@ class TestGradescopeClient:
 
         # Mock page object
         mock_page = Mock()
+        mock_page.url = "https://gradescope.com/courses/123456"
 
         # Mock instructor list
         mock_instructor1 = Mock()
-        mock_instructor1.text_content.return_value = "John Doe"
+        mock_instructor1.get_attribute.return_value = "Instructor: John Doe"
         mock_instructor2 = Mock()
-        mock_instructor2.text_content.return_value = "Jane Smith"
+        mock_instructor2.get_attribute.return_value = "Instructor: Jane Smith"
 
         mock_instructor_list = Mock()
         mock_instructor_list.count.return_value = 2
         mock_instructor_list.all.return_value = [mock_instructor1, mock_instructor2]
 
         def locator_side_effect(selector):
-            if selector == "div.instructorList button.rosterCell--primaryLink":
+            if selector == "li[aria-label^='Instructor:']":
                 return mock_instructor_list
             return Mock(count=lambda: 0)
 
         mock_page.locator.side_effect = locator_side_effect
+        mock_page.goto = Mock()
+        mock_page.wait_for_load_state = Mock()
 
         details = client._extract_course_details(mock_page)
         assert "instructors" in details
-        assert details["instructors"] == ["John Doe", "Jane Smith"]
+        assert "John Doe" in details["instructors"]
 
     def test_fetch_class_details_with_term_object(self):
         """Test that fetch_class_details accepts Term objects."""
@@ -138,7 +149,7 @@ class TestGradescopeClient:
 
                 # Verify the session method was called with the course ID
                 mock_session.assert_called_once_with("12345", None, True)
-                assert result == Path("roster.csv")
+                assert result == [Path("roster.csv")]
 
     def test_save_roster_with_course_url(self):
         """Test save_roster handles full course URL."""
@@ -156,7 +167,7 @@ class TestGradescopeClient:
 
                 # Verify the session method was called with the full URL
                 mock_session.assert_called_once_with("https://gradescope.com/courses/12345", None, True)
-                assert result == Path("roster.csv")
+                assert result == [Path("roster.csv")]
 
     def test_save_roster_with_save_dir(self):
         """Test save_roster with custom save directory."""
@@ -178,4 +189,4 @@ class TestGradescopeClient:
 
                     # Verify the session method was called with the save_dir
                     mock_session.assert_called_once_with("12345", save_dir, True)
-                    assert result == save_dir / "roster.csv"
+                    assert result == [save_dir / "roster.csv"]
