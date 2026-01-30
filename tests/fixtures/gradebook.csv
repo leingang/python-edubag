@@ -1,0 +1,25 @@
+Username,Last Name,First Name,Email,Sections,Quiz 1 Points,Quiz 2 Points,Midterm Points,Final Points,End-of-Line Indicator
+#alice.j,Johnson,Alice,alice.j@university.edu,"Calculus II 011,Calculus II 015",15,14,,10,#
+#bob.s,Smith,Bob,bob.s@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#charlie.b,Brown,Charlie,charlie.b@university.edu,"Calculus II 011,Calculus II 014",20,19,,15,#
+#diana.d,Davis,Diana,diana.d@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#eve.w,Wilson,Eve,eve.w@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#frank.m,Miller,Frank,frank.m@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#grace.t,Taylor,Grace,grace.t@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#henry.a,Anderson,Henry,henry.a@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#iris.t,Thomas,Iris,iris.t@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#jack.j,Jackson,Jack,jack.j@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#karen.w,White,Karen,karen.w@university.edu,"Calculus II 011,Calculus II 015",18,17,,14,#
+#leo.h,Harris,Leo,leo.h@university.edu,"Calculus II 011,Calculus II 014",19,18,,13,#
+#mia.m,Martin,Mia,mia.m@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#nathan.g,Garcia,Nathan,nathan.g@university.edu,"Calculus II 011,Calculus II 014",20,19,,15,#
+#olivia.m,Martinez,Olivia,olivia.m@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#pam.r,Robinson,Pam,pam.r@university.edu,"Calculus II 011,Calculus II 014",0,,,0,#
+#quinn.c,Clark,Quinn,quinn.c@university.edu,"Calculus II 011,Calculus II 014",,,,0,#
+#ryan.r,Rodriguez,Ryan,ryan.r@university.edu,"Calculus II 011,Calculus II 014",16,15,,11,#
+#tina.l,Lee,Tina,tina.l@university.edu,"Calculus II 011,Calculus II 014",20,19,,14,#
+#victor.h,Hall,Victor,victor.h@university.edu,"Calculus II 011,Calculus II 015",17,16,,12,#
+#wendy.y,Young,Wendy,wendy.y@university.edu,"Calculus II 011,Calculus II 014",19,18,,13,#
+#xavier.h,Hernandez,Xavier,xavier.h@university.edu,"Calculus II 011,Calculus II 015",,,,0,#
+#yara.k,King,Yara,yara.k@university.edu,"Calculus II 011,Calculus II 014",21,20,,16,#
+#zoe.w,Wright,Zoe,zoe.w@university.edu,"Calculus II 011,Calculus II 014",18,17,,12,#

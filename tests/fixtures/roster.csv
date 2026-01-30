@@ -1,0 +1,27 @@
+First Name,Last Name,SID,Email,Role,Section,Section 2
+Alice,Johnson,N10001001,alice.j@university.edu,Student,015,""
+Bob,Smith,N10002002,bob.s@university.edu,Student,014,""
+Charlie,Brown,N10003003,charlie.b@university.edu,Student,014,""
+Diana,Davis,N10004004,diana.d@university.edu,Student,014,""
+Eve,Wilson,N10005005,eve.w@university.edu,Student,015,""
+Frank,Miller,N10006006,frank.m@university.edu,Student,015,""
+Grace,Taylor,N10007007,grace.t@university.edu,Student,014,14.0
+Henry,Anderson,N10008008,henry.a@university.edu,Student,014,14.0
+Iris,Thomas,N10009009,iris.t@university.edu,Student,014,14.0
+Jack,Jackson,N10010010,jack.j@university.edu,Student,015,15.0
+Karen,White,N10011011,karen.w@university.edu,Student,015,15.0
+Leo,Harris,N10012012,leo.h@university.edu,Student,014,14.0
+Mia,Martin,N10013013,mia.m@university.edu,Student,015,15.0
+Nathan,Garcia,N10014014,nathan.g@university.edu,Student,014,14.0
+Olivia,Martinez,N10015015,olivia.m@university.edu,Student,015,""
+Pam,Robinson,N10016016,pam.r@university.edu,Student,014,14.0
+Quinn,Clark,N10017017,quinn.c@university.edu,Student,014,14.0
+Ryan,Rodriguez,N10018018,ryan.r@university.edu,Student,014,14.0
+Sam,Lewis,N10019019,sam.l@university.edu,Student,,""
+Tina,Lee,N10020020,tina.l@university.edu,Student,014,14.0
+Uma,Walker,N10021021,uma.w@university.edu,Student,,""
+Victor,Hall,N10022022,victor.h@university.edu,Student,015,15.0
+Wendy,Young,N10023023,wendy.y@university.edu,Student,014,14.0
+Xavier,Hernandez,N10024024,xavier.h@university.edu,Student,015,15.0
+Yara,King,N10025025,yara.k@university.edu,Student,014,14.0
+Zoe,Wright,N10026026,zoe.w@university.edu,Student,014,14.0

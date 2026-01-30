@@ -2,6 +2,7 @@ import re
 from typing import List
 import pandas as pd
 from pathlib import Path
+from loguru import logger
 
 from edubag.brightspace.gradebook import Gradebook
 from edubag.albert.roster import AlbertRoster
@@ -89,14 +90,17 @@ class GradescopeRoster(object):
             axis=1,
         )
 
+
     def update_sections_from_brightspace_gradebook(
-        self, gradebook: Gradebook
+        self, gradebook: Gradebook, skip_constant: bool = True
     ):
         """
         Update the sections in the roster based on the Brightspace gradebook data.
 
         Args:
             gradebook (Gradebook): The Brightspace gradebook instance.
+            skip_constant (bool): If True, skip columns with only one unique value.
+                Defaults to True.
 
         Returns: None
         """
@@ -124,8 +128,9 @@ class GradescopeRoster(object):
         merged_df = pd.merge(self.students, bs_sections, on="Email", how="left")
 
         def extract_and_pad_sections(sections_string):
+            """Extract section codes from a sections string (comma-separated or single)."""
             if pd.isna(sections_string):
-                return [None, None]
+                return []
 
             entries = [s.strip() for s in str(sections_string).split(",") if s.strip()]
             codes = []
@@ -139,15 +144,57 @@ class GradescopeRoster(object):
                     codes.append(match.group(1))
 
             if not codes:
-                return [None, None]
+                return []
 
             padded_codes = [code.zfill(3) for code in codes]
             sorted_codes = sorted(padded_codes)
-            return (sorted_codes + [None, None])[:2]
+            return sorted_codes
 
-        merged_df[["Section", "Section 2"]] = merged_df[
-            "_brightspace_sections"
-        ].apply(lambda x: pd.Series(extract_and_pad_sections(x)))
+        # Extract and pad sections
+        section_data = merged_df["_brightspace_sections"].apply(
+            lambda x: pd.Series(extract_and_pad_sections(x))
+        )
+
+        # Determine which columns to keep
+        if skip_constant:
+            # First, try to keep only columns with varying values
+            varying_columns = [col for col in section_data.columns 
+                               if len(section_data[col].dropna().unique()) > 1]
+            # If all columns are constant, keep the first non-empty column instead
+            if varying_columns:
+                columns_to_keep = varying_columns
+            else:
+                # All columns are constant; keep columns that have at least some non-null values
+                columns_to_keep = [col for col in section_data.columns 
+                                   if section_data[col].notna().any()]
+        else:
+            # Keep all columns with at least some non-null values
+            columns_to_keep = [col for col in section_data.columns 
+                               if section_data[col].notna().any()]
+
+        if len(columns_to_keep) == 0:
+            # No columns to add, emit warning and skip update
+            logger.warning(
+                "No section data found to add to the roster. self.students was not modified."
+            )
+            return
+
+        # Drop old section columns if they exist
+        cols_to_drop = [col for col in ["Section", "Section 2"] if col in merged_df.columns]
+        if cols_to_drop:
+            merged_df = merged_df.drop(columns=cols_to_drop)
+
+        # Only use the columns we want to keep
+        section_data_filtered = section_data[columns_to_keep]
+
+        if len(columns_to_keep) == 1:
+            # Only one column, rename it to "Section"
+            merged_df["Section"] = section_data_filtered.iloc[:, 0]
+        else:
+            # Multiple columns, use generic names
+            for i, col in enumerate(columns_to_keep):
+                col_name = "Section" if i == 0 else f"Section {i + 1}"
+                merged_df[col_name] = section_data_filtered.iloc[:, i]
 
         self.students = merged_df.drop(columns=["_brightspace_sections"])
 
