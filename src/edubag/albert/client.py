@@ -655,14 +655,23 @@ class AlbertClient(LMSClient):
             marked_count = 0
             for email in email_addresses:
                 logger.debug(f"Looking for student with email {email}")
-                # Find the row containing the student's email
-                row = frame.locator(f"tr.ps_grid-row:has-text('{email}')")
-                if row.count() == 0:
+                # Find the row containing the student's email by looking for the email link
+                # Using a more precise selector to avoid substring matches
+                rows = frame.locator("tr.ps_grid-row").all()
+                matched_row = None
+                for row in rows:
+                    # Look for the email link within the row
+                    email_link = row.locator(f"a[href='javascript:LaunchURL(null,\\'mailto:{email}\\',5);']")
+                    if email_link.count() > 0:
+                        matched_row = row
+                        break
+
+                if matched_row is None:
                     logger.warning(f"Student with email {email} not found in engagement list")
                     continue
 
                 # Find the engagement checkbox in this row
-                checkbox_container = row.locator(".psc_off_container").first
+                checkbox_container = matched_row.locator(".psc_off_container").first
                 if checkbox_container.count() > 0:
                     checkbox_container.click()
                     marked_count += 1
@@ -677,7 +686,7 @@ class AlbertClient(LMSClient):
             submit_button.click()
             frame.wait_for_load_state("networkidle")
 
-            # Confirm accurate
+            # Click Yes to confirm the submission is accurate
             yes_button = frame.get_by_role("button", name="Yes", exact=True)
             yes_button.click()
             frame.wait_for_load_state("networkidle")
@@ -718,12 +727,12 @@ class AlbertClient(LMSClient):
                 self._mark_engaged_session(class_number, term, email_addresses, headless)
                 return
             except (TimeoutError, RuntimeError) as e:
-                if attempt < max_retries and "Authentication" in str(e):
+                if attempt < max_retries:
                     logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
                     logger.info("Re-authenticating...")
                     if self.auth_state_path.exists():
                         self.auth_state_path.unlink()
                     self.authenticate(username=username, password=password, headless=headless)
                 else:
-                    logger.error(f"Max retries exceeded or non-auth error. {type(e).__name__}: {e}")
+                    logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
