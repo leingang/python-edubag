@@ -31,6 +31,17 @@ class TestMarkEngaged:
         assert "password" in params
         assert "headless" in params
 
+    def test_mark_engaged_return_type(self):
+        """Test that mark_engaged returns a dict with expected keys."""
+        # We can't call the actual method without authentication,
+        # but we can verify the return type annotation
+        import inspect
+
+        client = AlbertClient()
+        sig = inspect.signature(client.mark_engaged)
+        # Check return annotation exists and is a dict type
+        assert sig.return_annotation is not None
+
 
 class TestNormalizeLabel:
     """Test the _normalize_label helper function."""

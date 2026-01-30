@@ -555,12 +555,30 @@ class AlbertClient(LMSClient):
         term: str | Term,
         email_addresses: list[str],
         headless: bool = True,
-    ) -> None:
+    ) -> dict[str, list[str]]:
         """Internal method to mark students as engaged in a single browser session.
 
-        Raises TimeoutError if the session times out.
-        Raises RuntimeError if authentication has expired.
+        Args:
+            class_number (int): The class number for the course.
+            term (str | Term): The academic term (Term object, term name like "Spring 2026", or term code).
+            email_addresses (list[str]): List of student email addresses to mark as engaged.
+            headless (bool): Whether to run the browser in headless mode.
+
+        Returns:
+            dict[str, list[str]]: Dictionary with keys:
+                - 'marked': List of email addresses successfully marked as engaged
+                - 'already_engaged': List of email addresses already marked
+                - 'not_found': List of email addresses not found in the roster
+
+        Raises:
+            TimeoutError: If the session times out.
+            RuntimeError: If authentication has expired.
+            ValueError: If the Academic Engagement link is not found or term format is invalid.
         """
+        marked = []
+        already_engaged = []
+        not_found = []
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(storage_state=self.auth_state_path)
@@ -600,18 +618,29 @@ class AlbertClient(LMSClient):
             if isinstance(term, Term):
                 term_code = term.code
             else:
-                # Assume it's already a term code or parse it
+                # Try to parse as a term name first, then as a term code
                 try:
                     term_obj = Term.from_name(term)
                     term_code = term_obj.code
                 except (ValueError, AttributeError):
-                    # If parsing fails, assume it's already a term code
-                    term_code = int(term) if isinstance(term, str) else term
+                    # If parsing fails, assume it's a term code (should be numeric)
+                    try:
+                        term_code = int(term)
+                    except (ValueError, TypeError) as e:
+                        browser.close()
+                        raise ValueError(
+                            f"Invalid term format: {term}. "
+                            "Expected Term object, term name (e.g., 'Spring 2026'), or numeric term code."
+                        ) from e
 
             # Find the Academic Engagement link for the specified class
             # We need to search across all pages with pagination
             link_found = False
-            while not link_found:
+            max_pages = 100  # Safety limit to prevent infinite loops
+            pages_checked = 0
+
+            while not link_found and pages_checked < max_pages:
+                pages_checked += 1
                 # Find all links with onclick containing NYU_ACADEMIC_ENGAGEMENT_FLUID
                 engagement_links = page.locator(
                     f"a[onclick*='NYU_ACADEMIC_ENGAGEMENT_FLUID'][onclick*='STRM={term_code}'][onclick*='CLASS_NBR={class_number}']"
@@ -631,8 +660,11 @@ class AlbertClient(LMSClient):
                     page.wait_for_load_state("networkidle")
                 else:
                     # No more pages and link not found
-                    browser.close()
-                    raise ValueError(f"Academic Engagement link not found for class {class_number} in term {term}")
+                    break
+
+            if not link_found:
+                browser.close()
+                raise ValueError(f"Academic Engagement link not found for class {class_number} in term {term}")
 
             # Wait for the iframe to load
             page.wait_for_load_state("networkidle")
@@ -649,16 +681,19 @@ class AlbertClient(LMSClient):
 
                 if row.count() == 0:
                     logger.warning(f"Student with email {email} not found in the engagement list")
+                    not_found.append(email)
                     continue
 
                 # Find and click the engagement checkbox (psc_off_container indicates it's not engaged yet)
                 # Only click if the student is not already marked as engaged
-                checkbox_container = row.locator(".psc_off_container").first
+                checkbox_container = row.locator(".psc_off_container")
                 if checkbox_container.count() > 0:
-                    checkbox_container.click()
+                    checkbox_container.first.click()
                     logger.debug(f"Clicked engagement checkbox for {email}")
+                    marked.append(email)
                 else:
                     logger.info(f"Student {email} is already marked as engaged")
+                    already_engaged.append(email)
 
             # Submit the form
             logger.info("Submitting engagement form")
@@ -668,16 +703,21 @@ class AlbertClient(LMSClient):
             # Wait a bit for the confirmation dialog to appear
             page.wait_for_timeout(1000)
 
-            # Confirm accurate
+            # Confirm submission
             logger.info("Confirming engagement submission")
             confirm_button = iframe.get_by_role("button", name="Yes", exact=True)
             confirm_button.click()
 
             # Wait for submission to complete
             page.wait_for_load_state("networkidle")
-            logger.info(f"Successfully marked {len(email_addresses)} students as engaged")
+            logger.info(
+                f"Successfully submitted engagement form: {len(marked)} marked, "
+                f"{len(already_engaged)} already engaged, {len(not_found)} not found"
+            )
 
             browser.close()
+
+        return {"marked": marked, "already_engaged": already_engaged, "not_found": not_found}
 
     def mark_engaged(
         self,
@@ -687,19 +727,25 @@ class AlbertClient(LMSClient):
         username: str | None = None,
         password: str | None = None,
         headless: bool = True,
-    ) -> None:
+    ) -> dict[str, list[str]]:
         """Mark students as engaged in a course.
 
         Args:
             class_number (int): The class number for the course.
-            term (str | Term): The academic term.
+            term (str | Term): The academic term (Term object, term name like "Spring 2026", or term code).
             email_addresses (list[str]): List of student email addresses to mark as engaged.
             username (str | None): NetID to log in with. If None, user must enter manually.
             password (str | None): Password for login. If None, user must enter manually.
             headless (bool): Whether to run the browser in headless mode.
 
+        Returns:
+            dict[str, list[str]]: Dictionary with keys:
+                - 'marked': List of email addresses successfully marked as engaged
+                - 'already_engaged': List of email addresses already marked
+                - 'not_found': List of email addresses not found in the roster
+
         Raises:
-            ValueError: If the Academic Engagement link is not found.
+            ValueError: If the Academic Engagement link is not found or term format is invalid.
             RuntimeError: If authentication fails.
         """
         # Check if authentication state exists; if not, authenticate first
@@ -710,8 +756,7 @@ class AlbertClient(LMSClient):
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
-                self._mark_engaged_session(class_number, term, email_addresses, headless)
-                return
+                return self._mark_engaged_session(class_number, term, email_addresses, headless)
             except (TimeoutError, RuntimeError) as e:
                 if attempt < max_retries:
                     logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
@@ -722,3 +767,5 @@ class AlbertClient(LMSClient):
                 else:
                     logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
+        # This should never be reached due to the raise in the else block
+        return {"marked": [], "already_engaged": [], "not_found": []}
