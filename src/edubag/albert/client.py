@@ -189,7 +189,7 @@ class AlbertClient(LMSClient):
             label_text = label_element.first.text_content()
             if label_text:
                 label_text = label_text.strip()
-            
+
             # If label is empty or just whitespace (like &nbsp;), extract from label element's parent ID
             if not label_text or label_text == "\xa0":  # \xa0 is non-breaking space
                 label_parent = label_element.first.locator("xpath=parent::*")
@@ -205,7 +205,7 @@ class AlbertClient(LMSClient):
                         continue
                 else:
                     continue
-            
+
             if not label_text:
                 continue
 
@@ -548,3 +548,177 @@ class AlbertClient(LMSClient):
                     logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
                     raise
         return []
+
+    def _mark_engaged_session(
+        self,
+        class_number: int,
+        term: str | Term,
+        email_addresses: list[str],
+        headless: bool = True,
+    ) -> None:
+        """Internal method to mark students as engaged in a single browser session.
+
+        Raises TimeoutError if the session times out.
+        Raises RuntimeError if authentication has expired.
+        """
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(storage_state=self.auth_state_path)
+            page = context.new_page()
+
+            page.goto(self.base_url)
+            if "login" in page.url or "errorCode" in page.url:
+                browser.close()
+                raise RuntimeError("Authentication session expired.")
+
+            try:
+                page.locator("#IS_FSA_SchWrp").get_by_role("link", name=str(term)).click()
+            except Exception as e:
+                # The click failed - check if we got redirected to login
+                error_message = str(e)
+                current_url = page.url
+                logger.debug(f"Click failed. Current URL: {current_url}")
+                logger.debug(f"Error message: {error_message}")
+                # Check both the current URL and the error message for login/auth failures
+                if (
+                    "login" in current_url
+                    or "errorCode" in current_url
+                    or "errorCode=105" in error_message
+                    or "cmd=login" in error_message
+                ):
+                    logger.info("Detected authentication failure in error message")
+                    browser.close()
+                    raise RuntimeError("Authentication session expired during navigation.") from e
+                # If not a login redirect, re-raise the original exception
+                logger.debug("Not an auth error, re-raising original exception")
+                browser.close()
+                raise
+
+            page.wait_for_load_state("networkidle")
+
+            # Convert term to term code if it's a Term object
+            if isinstance(term, Term):
+                term_code = term.code
+            else:
+                # Assume it's already a term code or parse it
+                try:
+                    term_obj = Term.from_name(term)
+                    term_code = term_obj.code
+                except (ValueError, AttributeError):
+                    # If parsing fails, assume it's already a term code
+                    term_code = int(term) if isinstance(term, str) else term
+
+            # Find the Academic Engagement link for the specified class
+            # We need to search across all pages with pagination
+            link_found = False
+            while not link_found:
+                # Find all links with onclick containing NYU_ACADEMIC_ENGAGEMENT_FLUID
+                engagement_links = page.locator(
+                    f"a[onclick*='NYU_ACADEMIC_ENGAGEMENT_FLUID'][onclick*='STRM={term_code}'][onclick*='CLASS_NBR={class_number}']"
+                ).all()
+
+                if engagement_links:
+                    logger.info(f"Found Academic Engagement link for class {class_number}")
+                    engagement_links[0].click()
+                    link_found = True
+                    break
+
+                # Check if there's a next page button and click it
+                next_button = page.locator(".isFSA_PNext")
+                if next_button.count() > 0 and next_button.is_visible():
+                    logger.debug("Navigating to next page to find Academic Engagement link")
+                    next_button.click()
+                    page.wait_for_load_state("networkidle")
+                else:
+                    # No more pages and link not found
+                    browser.close()
+                    raise ValueError(f"Academic Engagement link not found for class {class_number} in term {term}")
+
+            # Wait for the iframe to load
+            page.wait_for_load_state("networkidle")
+            iframe = page.frame_locator("iframe[name='lbFrameContent']")
+
+            # Wait for the content to load in the iframe
+            iframe.locator(".ps_grid-row").first.wait_for(state="visible", timeout=30000)
+
+            # Mark each student as engaged
+            for email in email_addresses:
+                logger.info(f"Marking {email} as engaged")
+                # Find the row containing the student's email
+                row = iframe.locator(f"tr.ps_grid-row:has-text('{email}')")
+
+                if row.count() == 0:
+                    logger.warning(f"Student with email {email} not found in the engagement list")
+                    continue
+
+                # Find and click the engagement checkbox (psc_off_container indicates it's not engaged yet)
+                # Only click if the student is not already marked as engaged
+                checkbox_container = row.locator(".psc_off_container").first
+                if checkbox_container.count() > 0:
+                    checkbox_container.click()
+                    logger.debug(f"Clicked engagement checkbox for {email}")
+                else:
+                    logger.info(f"Student {email} is already marked as engaged")
+
+            # Submit the form
+            logger.info("Submitting engagement form")
+            submit_button = iframe.locator("[id*='NYU_AE_RSTR_WRK_SUBMIT_PB']")
+            submit_button.click()
+
+            # Wait a bit for the confirmation dialog to appear
+            page.wait_for_timeout(1000)
+
+            # Confirm accurate
+            logger.info("Confirming engagement submission")
+            confirm_button = iframe.get_by_role("button", name="Yes", exact=True)
+            confirm_button.click()
+
+            # Wait for submission to complete
+            page.wait_for_load_state("networkidle")
+            logger.info(f"Successfully marked {len(email_addresses)} students as engaged")
+
+            browser.close()
+
+    def mark_engaged(
+        self,
+        class_number: int,
+        term: str | Term,
+        email_addresses: list[str],
+        username: str | None = None,
+        password: str | None = None,
+        headless: bool = True,
+    ) -> None:
+        """Mark students as engaged in a course.
+
+        Args:
+            class_number (int): The class number for the course.
+            term (str | Term): The academic term.
+            email_addresses (list[str]): List of student email addresses to mark as engaged.
+            username (str | None): NetID to log in with. If None, user must enter manually.
+            password (str | None): Password for login. If None, user must enter manually.
+            headless (bool): Whether to run the browser in headless mode.
+
+        Raises:
+            ValueError: If the Academic Engagement link is not found.
+            RuntimeError: If authentication fails.
+        """
+        # Check if authentication state exists; if not, authenticate first
+        if not self.auth_state_path.exists():
+            logger.warning(f"Auth state file not found at {self.auth_state_path}. Running authentication...")
+            self.authenticate(username=username, password=password, headless=headless)
+
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                self._mark_engaged_session(class_number, term, email_addresses, headless)
+                return
+            except (TimeoutError, RuntimeError) as e:
+                if attempt < max_retries:
+                    logger.warning(f"{type(e).__name__}: {e} Authentication may have expired.")
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(username=username, password=password, headless=headless)
+                else:
+                    logger.error(f"Max retries exceeded. {type(e).__name__}: {e}")
+                    raise

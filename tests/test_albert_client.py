@@ -1,8 +1,35 @@
 #!/usr/bin/env python
 """Tests for albert client module."""
 
-import pytest
-from edubag.albert.client import _normalize_label
+from edubag.albert.client import AlbertClient, _normalize_label
+
+
+class TestMarkEngaged:
+    """Test the mark_engaged method."""
+
+    def test_mark_engaged_method_exists(self):
+        """Test that mark_engaged method exists on AlbertClient."""
+        client = AlbertClient()
+        assert hasattr(client, "mark_engaged")
+        assert callable(client.mark_engaged)
+
+    def test_mark_engaged_method_signature(self):
+        """Test that mark_engaged has the correct parameters."""
+        import inspect
+
+        client = AlbertClient()
+        sig = inspect.signature(client.mark_engaged)
+        params = list(sig.parameters.keys())
+
+        # Check that required parameters are present
+        assert "class_number" in params
+        assert "term" in params
+        assert "email_addresses" in params
+
+        # Check that optional parameters are present
+        assert "username" in params
+        assert "password" in params
+        assert "headless" in params
 
 
 class TestNormalizeLabel:
