@@ -649,7 +649,10 @@ class AlbertClient(LMSClient):
             # Wait for the iframe to load
             iframe_locator = page.locator("iframe[name='lbFrameContent']")
             iframe_locator.wait_for(state="visible", timeout=30000)
-            frame = iframe_locator.content_frame()
+            frame = page.frame_locator("iframe[name='lbFrameContent']")
+
+            # Wait a bit for the grid to populate
+            page.wait_for_timeout(2000)
 
             # Mark each student as engaged
             marked_count = 0
@@ -658,6 +661,7 @@ class AlbertClient(LMSClient):
                 # Find the row containing the student's email by looking for the email link
                 # Using a more precise selector to avoid substring matches
                 rows = frame.locator("tr.ps_grid-row").all()
+                
                 matched_row = None
                 for row in rows:
                     # Look for the email link within the row
@@ -665,9 +669,21 @@ class AlbertClient(LMSClient):
                     if email_link.count() > 0:
                         matched_row = row
                         break
+                    
+                    # Also try looking for any link containing the email as a fallback
+                    if matched_row is None:
+                        any_email_link = row.locator(f"a:has-text('{email}')")
+                        if any_email_link.count() > 0:
+                            matched_row = row
+                            logger.debug(f"Found student {email} by text content")
+                            break
 
                 if matched_row is None:
                     logger.warning(f"Student with email {email} not found in engagement list")
+                    # Log all emails found on the page for debugging
+                    all_emails = frame.locator("tr.ps_grid-row a").all()
+                    if all_emails:
+                        logger.debug(f"Emails found on page: {[link.text_content() for link in all_emails[:10]]}")
                     continue
 
                 # Find the engagement checkbox in this row
@@ -682,14 +698,14 @@ class AlbertClient(LMSClient):
             logger.info(f"Marked {marked_count} out of {len(email_addresses)} students as engaged")
 
             # Submit the form
-            submit_button = frame.locator("[id*='NYU_AE_RSTR_WRK_SUBMIT_PB']")
+            submit_button = frame.locator("a[id='NYU_AE_RSTR_WRK_SUBMIT_PB']")
             submit_button.click()
-            frame.wait_for_load_state("networkidle")
+            page.wait_for_load_state("networkidle")
 
             # Click Yes to confirm the submission is accurate
             yes_button = frame.get_by_role("button", name="Yes", exact=True)
             yes_button.click()
-            frame.wait_for_load_state("networkidle")
+            page.wait_for_load_state("networkidle")
 
             logger.info("Academic engagement submission completed")
             browser.close()
