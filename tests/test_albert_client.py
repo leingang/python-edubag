@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """Tests for albert client module."""
 
-import pytest
-from edubag.albert.client import _normalize_label
+import inspect
+
+from edubag.albert.client import AlbertClient, _normalize_label
 
 
 class TestNormalizeLabel:
@@ -35,3 +36,34 @@ class TestNormalizeLabel:
     def test_mixed_case(self):
         """Test label with mixed case."""
         assert _normalize_label("ClassNumber") == "classnumber"
+
+
+class TestAlbertClientMarkEngaged:
+    """Test the mark_engaged method exists and has the correct signature."""
+
+    def test_mark_engaged_method_exists(self):
+        """Test that mark_engaged method exists on AlbertClient."""
+        assert hasattr(AlbertClient, "mark_engaged")
+        assert callable(AlbertClient.mark_engaged)
+
+    def test_mark_engaged_signature(self):
+        """Test that mark_engaged has the expected parameters."""
+        method = AlbertClient.mark_engaged
+        sig = inspect.signature(method)
+        params = list(sig.parameters.keys())
+
+        # Check required parameters are present
+        assert "self" in params
+        assert "class_number" in params
+        assert "term" in params
+        assert "email_addresses" in params
+
+        # Check optional parameters are present
+        assert "username" in params
+        assert "password" in params
+        assert "headless" in params
+
+    def test_private_methods_exist(self):
+        """Test that the private helper methods exist."""
+        assert hasattr(AlbertClient, "_find_academic_engagement_link")
+        assert hasattr(AlbertClient, "_mark_engaged_session")
