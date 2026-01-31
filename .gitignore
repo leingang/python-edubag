@@ -203,3 +203,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+tests/debug_mark_engaged.py
