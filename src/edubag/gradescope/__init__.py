@@ -286,7 +286,12 @@ def send_roster(
         Path | None, typer.Option(help="Path to stored auth state JSON")
     ] = None,
 ) -> None:
-    """Upload a roster CSV file to a Gradescope course."""
+    """Upload a roster CSV file to a Gradescope course.
+    
+    Users are added or updated based on the contents of the CSV file.
+    For example, the file might include additional staff members to add to the course.
+    Or it might contain section information to update existing students.    
+    """
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
     try:
         client.send_roster(

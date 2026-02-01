@@ -537,6 +537,10 @@ class GradescopeClient(LMSClient):
     ) -> None:
         """Upload users from a csv file to a course on Gradescope.
 
+        Users are added or updated based on the contents of the CSV file.
+        For example, the file might include additional staff members to add to the course.
+        Or it might contain section information to update existing students.
+
         Args:
           * course: Gradescope course ID or URL to the course home page
           * csv_path: path to the roster CSV file to upload
