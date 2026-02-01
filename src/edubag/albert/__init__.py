@@ -199,6 +199,58 @@ def fetch_class_details(
         typer.echo(json.dumps(result, indent=2))
 
 
+@client_app.command("mark-engaged")
+def mark_engaged(
+    class_number: Annotated[int, typer.Argument(help="Class number for the course")],
+    term: Annotated[str, typer.Argument(help="Term, e.g., 'Spring 2026'")],
+    email_addresses: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--email",
+            "-e",
+            help="Email address of student to mark as engaged (can be repeated). If not provided, reads from STDIN.",
+        ),
+    ] = None,
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Albert base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
+) -> None:
+    """Mark students as engaged in academic activities for a course.
+    
+    Email addresses can be provided via --email flags or read from STDIN (one per line).
+    """
+    # If no email addresses provided via CLI, read from STDIN
+    if not email_addresses:
+        email_addresses = [line.strip() for line in sys.stdin if line.strip()]
+    
+    if not email_addresses:
+        typer.echo("Error: No email addresses provided via --email or STDIN", err=True)
+        raise typer.Exit(code=1)
+    
+    client = AlbertClient(base_url=base_url, auth_state_path=auth_state_path)
+    try:
+        client.mark_engaged(
+            class_number=class_number,
+            term=term,
+            email_addresses=email_addresses,
+            headless=headless,
+        )
+        typer.echo(f"Successfully marked {len(email_addresses)} student(s) as engaged.")
+    except Exception as e:
+        typer.echo(f"Error marking students as engaged: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 # Register the albert app as a subcommand with the main app
 main_app.add_typer(app, name="albert")
 app.add_typer(client_app, name="client")
