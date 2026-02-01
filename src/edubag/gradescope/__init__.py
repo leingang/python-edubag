@@ -266,6 +266,40 @@ def save_roster(
         typer.echo(f"Roster saved to {p}")
 
 
+@client_app.command("send-roster")
+def send_roster(
+    course: Annotated[
+        str, typer.Argument(help="Gradescope course ID or URL to the course home page")
+    ],
+    csv_path: Annotated[Path, typer.Argument(help="Path to the roster CSV file to upload")],
+    headless: Annotated[
+        bool,
+        typer.Option(
+            "--headless/--headed",
+            help="Run browser headless (for automation) or headed (for debugging)",
+        ),
+    ] = True,
+    base_url: Annotated[
+        str | None, typer.Option(help="Override Gradescope base URL")
+    ] = None,
+    auth_state_path: Annotated[
+        Path | None, typer.Option(help="Path to stored auth state JSON")
+    ] = None,
+) -> None:
+    """Upload a roster CSV file to a Gradescope course."""
+    client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
+    try:
+        client.send_roster(
+            course=course,
+            csv_path=csv_path,
+            headless=headless,
+        )
+        typer.echo("Roster upload completed successfully.")
+    except Exception as e:
+        typer.echo(f"Roster upload failed: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 # Register the gradescope app as a subcommand with the main app
 main_app.add_typer(app, name="gradescope")
 app.add_typer(client_app, name="client")

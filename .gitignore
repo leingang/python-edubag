@@ -28,6 +28,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Test files with live data
+tests/fixtures/local
+
 # Debug scripts with live data
 tests/debug_mark_engaged.py
 # PyInstaller

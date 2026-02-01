@@ -1,9 +1,15 @@
 #!/usr/bin/env python
 """Tests for gradescope client module."""
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import pytest
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from edubag.albert.term import Season, Term
 from edubag.gradescope.client import GradescopeClient
@@ -190,3 +196,21 @@ class TestGradescopeClient:
                     # Verify the session method was called with the save_dir
                     mock_session.assert_called_once_with("12345", save_dir, True)
                     assert result == [save_dir / "roster.csv"]
+
+    def test_send_roster_integration(self):
+        """Integration test: upload a roster CSV to a real course.
+
+        Requires RUN_GRADESCOPE_UPLOAD_TEST=1 and a valid auth state.
+        """
+        if os.getenv("RUN_GRADESCOPE_UPLOAD_TEST") != "1":
+            pytest.skip("Set RUN_GRADESCOPE_UPLOAD_TEST=1 to run this integration test.")
+
+        client = GradescopeClient()
+        roster_path = Path(__file__).parent / "fixtures" / "local" / "1227659_roster_with_sections.csv"
+        if not roster_path.exists():
+            pytest.skip("Fixture roster file not found.")
+
+        if not client.auth_state_path.exists():
+            pytest.skip("Auth state not found. Run gradescope client authenticate first.")
+
+        client.send_roster(course="1227659", csv_path=roster_path, headless=True)

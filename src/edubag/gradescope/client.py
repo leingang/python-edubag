@@ -299,6 +299,7 @@ class GradescopeClient(LMSClient):
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
+        return []
 
     def _extract_course_details(self, page: Page) -> dict:
         """Extract course details from a Gradescope course page.
@@ -527,3 +528,115 @@ class GradescopeClient(LMSClient):
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
         return []
+
+    def send_roster(
+        self,
+        course: str,
+        csv_path: Path,
+        headless: bool = True,
+    ) -> None:
+        """Upload users from a csv file to a course on Gradescope.
+
+        Args:
+          * course: Gradescope course ID or URL to the course home page
+          * csv_path: path to the roster CSV file to upload
+          * headless (bool): Whether to run the browser in headless mode.
+
+        Returns:
+            None
+
+        Raises:
+            RuntimeError: If roster upload fails or authentication expired.
+        """
+        if not csv_path.exists():
+            raise FileNotFoundError(f"Roster CSV not found: {csv_path}")
+
+        # Ensure authentication state exists; trigger a login flow if missing
+        if not self.auth_state_path.exists():
+            logger.warning(
+                f"Auth state file not found at {self.auth_state_path}. Running authentication..."
+            )
+            self.authenticate(headless=headless)
+
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                self._send_roster_session(course, csv_path, headless)
+                return
+            except RuntimeError as e:
+                if attempt < max_retries:
+                    logger.warning(f"RuntimeError: {e} Authentication may have expired.")
+                    logger.info("Re-authenticating...")
+                    if self.auth_state_path.exists():
+                        self.auth_state_path.unlink()
+                    self.authenticate(headless=headless)
+                    continue
+                else:
+                    logger.error(f"Max retries exceeded. RuntimeError: {e}")
+                    raise
+
+    def _send_roster_session(
+        self,
+        course: str,
+        csv_path: Path,
+        headless: bool = True,
+    ) -> None:
+        """Internal method to upload a roster in a single browser session.
+
+        Raises RuntimeError if authentication has expired or upload fails.
+        """
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(storage_state=self.auth_state_path)
+            page = context.new_page()
+
+            # Navigate to the course page
+            if course.startswith("http://") or course.startswith("https://"):
+                course_url = course
+            else:
+                course_url = f"{self.base_url}/courses/{course}"
+            page.goto(course_url)
+
+            # Check if we need to re-login
+            if "login" in page.url:
+                browser.close()
+                raise RuntimeError("Authentication session expired. Please re-authenticate.")
+
+            try:
+                # Navigate directly to memberships (roster) page
+                roster_url = course_url.rstrip("/") + "/memberships"
+                page.goto(roster_url)
+                page.wait_for_load_state("networkidle")
+
+                # Open the Add Students or Staff dialog
+                page.get_by_role(
+                    "button", name="Add Students or Staff", exact=False
+                ).click()
+
+                # Select CSV File option
+                page.get_by_role("button", name="CSV File", exact=False).click()
+
+                # Trigger file chooser and upload
+                page.get_by_role("button", name="Select CSV", exact=False).click()
+                page.get_by_label("File *Please select a").set_input_files(csv_path)
+
+                # Step through import flow
+                page.get_by_role("button", name="Next", exact=False).click()
+                page.get_by_role("button", name="Import", exact=False).click()
+
+                # Wait for upload to complete (flash message or dialog close)
+                page.wait_for_load_state("networkidle")
+
+                flash_alert = page.locator(
+                    ".alert.alert-flashMessage.alert-success span"
+                ).first
+                if flash_alert.count() > 0:
+                    message = flash_alert.text_content()
+                    logger.info(message)
+                else:
+                    logger.info("Roster upload submitted.")
+
+                browser.close()
+            except Exception as e:
+                browser.close()
+                raise RuntimeError(f"Error during roster upload: {e}") from e
