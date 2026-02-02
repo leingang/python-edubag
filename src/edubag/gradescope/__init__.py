@@ -272,6 +272,13 @@ def send_roster(
         str, typer.Argument(help="Gradescope course ID or URL to the course home page")
     ],
     csv_path: Annotated[Path, typer.Argument(help="Path to the roster CSV file to upload")],
+    notify: Annotated[
+        bool, typer.Option(help="Notify users by email when added to the course")
+    ] = False,
+    role: Annotated[
+        str,
+        typer.Option(help="Role to add users as. Must be one of: Student, Instructor, TA, Reader"),
+    ] = "Student",
     headless: Annotated[
         bool,
         typer.Option(
@@ -297,6 +304,8 @@ def send_roster(
         client.send_roster(
             course=course,
             csv_path=csv_path,
+            notify=notify,
+            role=role,
             headless=headless,
         )
         typer.echo("Roster upload completed successfully.")

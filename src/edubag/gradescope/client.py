@@ -533,6 +533,8 @@ class GradescopeClient(LMSClient):
         self,
         course: str,
         csv_path: Path,
+        notify: bool = False,
+        role: str = "Student",
         headless: bool = True,
     ) -> None:
         """Upload users from a csv file to a course on Gradescope.
@@ -544,6 +546,8 @@ class GradescopeClient(LMSClient):
         Args:
           * course: Gradescope course ID or URL to the course home page
           * csv_path: path to the roster CSV file to upload
+          * notify (bool): Whether to notify users by email of being added. Default False.
+          * role (str): Role to add users as. Must be one of "Student", "Instructor", "TA", "Reader". Default "Student".
           * headless (bool): Whether to run the browser in headless mode.
 
         Returns:
@@ -555,6 +559,11 @@ class GradescopeClient(LMSClient):
         if not csv_path.exists():
             raise FileNotFoundError(f"Roster CSV not found: {csv_path}")
 
+        # Validate role parameter
+        valid_roles = {"Student", "Instructor", "TA", "Reader"}
+        if role not in valid_roles:
+            raise ValueError(f"Invalid role '{role}'. Must be one of {valid_roles}")
+
         # Ensure authentication state exists; trigger a login flow if missing
         if not self.auth_state_path.exists():
             logger.warning(
@@ -565,7 +574,7 @@ class GradescopeClient(LMSClient):
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
-                self._send_roster_session(course, csv_path, headless)
+                self._send_roster_session(course, csv_path, notify=notify, role=role, headless=headless)
                 return
             except RuntimeError as e:
                 if attempt < max_retries:
@@ -583,12 +592,32 @@ class GradescopeClient(LMSClient):
         self,
         course: str,
         csv_path: Path,
+        notify: bool = False,
+        role: str = "Student",
         headless: bool = True,
     ) -> None:
         """Internal method to upload a roster in a single browser session.
 
+        Args:
+            course: Gradescope course ID or URL to the course home page
+            csv_path: Path to the roster CSV file to upload
+            notify (bool): Whether to notify users by email. Default False.
+            role (str): Role to add users as. Must be one of "Student", "Instructor", "TA", "Reader". Default "Student".
+            headless (bool): Whether to run the browser in headless mode.
+
         Raises RuntimeError if authentication has expired or upload fails.
         """
+        # Map role names to radio button values
+        role_to_value = {
+            "Student": "0",
+            "Instructor": "1",
+            "TA": "2",
+            "Reader": "3",
+        }
+        role_value = role_to_value.get(role)
+        if role_value is None:
+            raise ValueError(f"Invalid role '{role}'. Must be one of {list(role_to_value.keys())}")
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context(storage_state=self.auth_state_path)
@@ -624,6 +653,26 @@ class GradescopeClient(LMSClient):
                 page.get_by_role("button", name="Select CSV", exact=False).click()
                 page.get_by_label("File *Please select a").set_input_files(csv_path)
 
+                # Scope selectors to the visible dialog to avoid duplicate IDs
+                dialog = page.locator("dialog").filter(has_text="Import course members")
+
+                # Handle notify checkbox using JavaScript (form elements may not be "visible" due to styling)
+                notify_checkbox = dialog.locator("#notify_by_email")
+                if notify_checkbox.count() > 0:
+                    # Use JavaScript to set the checkbox state directly
+                    current_checked = notify_checkbox.is_checked()
+                    if notify != current_checked:
+                        # Toggle using JavaScript to bypass visibility requirements
+                        notify_checkbox.evaluate("el => el.click()")
+                    logger.debug(f"Notify checkbox set to: {notify}")
+
+                # Handle role radio button selection using JavaScript
+                role_radio = dialog.locator(f"input[name='options[role]'][value='{role_value}']")
+                if role_radio.count() > 0:
+                    # Use JavaScript to click the radio button directly
+                    role_radio.evaluate("el => el.click()")
+                    logger.debug(f"Role set to: {role}")
+
                 # Step through import flow
                 page.get_by_role("button", name="Next", exact=False).click()
                 page.get_by_role("button", name="Import", exact=False).click()
@@ -631,12 +680,24 @@ class GradescopeClient(LMSClient):
                 # Wait for upload to complete (flash message or dialog close)
                 page.wait_for_load_state("networkidle")
 
-                flash_alert = page.locator(
-                    ".alert.alert-flashMessage.alert-success span"
-                ).first
-                if flash_alert.count() > 0:
-                    message = flash_alert.text_content()
-                    logger.info(message)
+                # Extract and log all flash messages
+                flash_messages = page.locator(".alert.alert-flashMessage")
+                if flash_messages.count() > 0:
+                    for i in range(flash_messages.count()):
+                        flash = flash_messages.nth(i)
+                        message_text = flash.locator("span").first.text_content()
+                        if message_text:
+                            message_text = message_text.strip()
+                            # Determine message type based on alert class
+                            alert_class = flash.get_attribute("class") or ""
+                            if "alert-success" in alert_class:
+                                logger.success(message_text)
+                            elif "alert-warning" in alert_class:
+                                logger.warning(message_text)
+                            elif "alert-error" in alert_class:
+                                logger.error(message_text)
+                            else:
+                                logger.info(message_text)
                 else:
                     logger.info("Roster upload submitted.")
 
