@@ -95,6 +95,29 @@ class BrightspaceClient(LMSClient):
 
             browser.close()
 
+    @staticmethod
+    def _check_export_checkbox(
+        page,
+        *,
+        name: str | None = None,
+        labels: tuple[str, ...] = (),
+    ) -> bool:
+        """Check the first matching export checkbox by input name or label.
+
+        Returns True if a checkbox was found and checked.
+        """
+        if name:
+            name_locator = page.locator(f"input[name='{name}']")
+            if name_locator.count() > 0:
+                name_locator.first.check(force=True)
+                return True
+        for label in labels:
+            label_locator = page.get_by_role("checkbox", name=label, exact=False)
+            if label_locator.count() > 0:
+                label_locator.first.check(force=True)
+                return True
+        return False
+
     def _save_gradebook_session(
         self,
         course: str,
@@ -130,14 +153,42 @@ class BrightspaceClient(LMSClient):
             page.get_by_role("link", name="Enter Grades  selected").click()
 
             # Export gradebook
-            page.get_by_role("button", name="Export").click()
-            page.get_by_role("checkbox", name="Points grade").check()
-            page.get_by_role("checkbox", name="Last Name").check()
-            page.get_by_role("checkbox", name="First Name").check()
-            page.get_by_role("checkbox", name="Email").check()
-            page.get_by_role("checkbox", name="Section Membership").check()
-            page.get_by_role("checkbox", name="Select all rows").check()
-            page.get_by_role("button", name="Export to CSV").click()
+            export_button = page.get_by_role("button", name="Export")
+            export_to_csv = page.get_by_role("button", name="Export to CSV")
+            for _ in range(3):
+                export_button.scroll_into_view_if_needed()
+                export_button.click()
+                try:
+                    export_to_csv.wait_for(state="visible", timeout=5000)
+                    break
+                except Exception:
+                    page.wait_for_timeout(1000)
+            export_to_csv.wait_for(state="visible", timeout=30000)
+            if not self._check_export_checkbox(
+                page,
+                name="PointsGrade",
+                labels=("Points grade", "Points Grade", "Points"),
+            ):
+                logger.warning("Export option 'Points grade' not found.")
+            if not self._check_export_checkbox(page, name="LastName", labels=("Last Name",)):
+                logger.warning("Export option 'Last Name' not found.")
+            if not self._check_export_checkbox(page, name="FirstName", labels=("First Name",)):
+                logger.warning("Export option 'First Name' not found.")
+            if not self._check_export_checkbox(page, name="Email", labels=("Email",)):
+                logger.warning("Export option 'Email' not found.")
+            if not self._check_export_checkbox(
+                page,
+                name="SectionMembership",
+                labels=("Section Membership", "Section"),
+            ):
+                logger.warning("Export option 'Section Membership' not found.")
+            if not self._check_export_checkbox(
+                page,
+                labels=("Select all rows", "Select All Rows"),
+            ):
+                logger.warning("Export option 'Select all rows' not found.")
+            export_to_csv.scroll_into_view_if_needed()
+            export_to_csv.click()
 
             with page.expect_download() as download_info:
                 page.get_by_role("button", name="Download").click()
