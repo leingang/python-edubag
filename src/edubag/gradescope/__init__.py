@@ -14,7 +14,9 @@ from edubag.gradescope.scoresheet import (
     VersionedScoresheet,
 )
 
+from .assignment import Assignment
 from .client import GradescopeClient
+from .course import Course
 
 # Create a local Typer app for gradescope subcommands
 app = typer.Typer(help="Gradescope management commands")
