@@ -4,8 +4,6 @@
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 from edubag.gradescope.assignment import Assignment
 from edubag.gradescope.course import Course
 

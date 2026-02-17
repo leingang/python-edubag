@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated
 
 import typer
 from loguru import logger
@@ -14,9 +14,11 @@ from edubag.gradescope.scoresheet import (
     VersionedScoresheet,
 )
 
-from .assignment import Assignment
+from .assignment import Assignment as Assignment
 from .client import GradescopeClient
-from .course import Course
+from .course import Course as Course
+
+__all__ = ["Course", "Assignment", "GradescopeClient"]
 
 # Create a local Typer app for gradescope subcommands
 app = typer.Typer(help="Gradescope management commands")
@@ -95,7 +97,7 @@ def add_sections_to_roster_from_brightspace(
             help="Skip columns with only one unique value.",
         ),
     ] = True,
-) -> List[Path]:
+) -> list[Path]:
     """Add section information to a Gradescope roster from a Brightspace gradebook CSV.
 
     The output CSV file can be specified with `output_csv`. If not provided,
@@ -296,10 +298,10 @@ def send_roster(
     ] = None,
 ) -> None:
     """Upload a roster CSV file to a Gradescope course.
-    
+
     Users are added or updated based on the contents of the CSV file.
     For example, the file might include additional staff members to add to the course.
-    Or it might contain section information to update existing students.    
+    Or it might contain section information to update existing students.
     """
     client = GradescopeClient(base_url=base_url, auth_state_path=auth_state_path)
     try:

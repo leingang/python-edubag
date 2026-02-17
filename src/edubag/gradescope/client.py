@@ -1,10 +1,13 @@
 """Module to automate interactions with the Gradescope platform."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import platformdirs
 from dotenv import load_dotenv
@@ -13,6 +16,10 @@ from playwright.sync_api import Page, sync_playwright
 
 from edubag.albert.term import Term
 from edubag.clients import LMSClient
+
+if TYPE_CHECKING:
+    from edubag.gradescope.assignment import Assignment
+    from edubag.gradescope.course import Course
 
 
 class GradescopeClient(LMSClient):
@@ -274,7 +281,7 @@ class GradescopeClient(LMSClient):
 
         Returns:
             list[Path]: list containing path to the saved roster file
-            
+
         Raises:
             RuntimeError: If roster download fails or authentication expired.
         """
@@ -361,7 +368,7 @@ class GradescopeClient(LMSClient):
             lms_id = lms_resource.get_attribute("data-lms-id")
             if lms_id:
                 course_details["lms_course_id"] = lms_id
-            
+
             lms_text = lms_resource.text_content()
             if lms_text and "Linked to:" in lms_text:
                 lms_name = lms_text.split("Linked to:", 1)[1].strip()
@@ -423,7 +430,8 @@ class GradescopeClient(LMSClient):
                 courses_container = courses_for_term_divs.nth(matching_term_index)
             else:
                 logger.warning(
-                    f"Courses container index {matching_term_index} out of range (only {courses_for_term_count} containers)"
+                    f"Courses container index {matching_term_index} out of range "
+                    f"(only {courses_for_term_count} containers)"
                 )
                 browser.close()
                 return result
@@ -706,20 +714,19 @@ class GradescopeClient(LMSClient):
                 browser.close()
                 raise RuntimeError(f"Error during roster upload: {e}") from e
 
-    def fetch_courses(self, term: str | Term | None = None, headless: bool = True) -> list["Course"]:
+    def fetch_courses(self, term: str | Term | None = None, headless: bool = True) -> list[Course]:
         """Fetch list of courses for the authenticated user.
-        
+
         Args:
             term: Optional term to filter courses by (e.g., "Fall 2025" or Term object)
             headless: Whether to run the browser in headless mode
-            
+
         Returns:
             List of Course objects
-            
+
         Raises:
             RuntimeError: If authentication has expired
         """
-        from edubag.gradescope.course import Course
 
         # Ensure authentication state exists
         if not self.auth_state_path.exists():
@@ -743,9 +750,9 @@ class GradescopeClient(LMSClient):
                     raise
         return []
 
-    def _fetch_courses_session(self, term: str | Term | None = None, headless: bool = True) -> list["Course"]:
+    def _fetch_courses_session(self, term: str | Term | None = None, headless: bool = True) -> list[Course]:
         """Internal method to fetch courses in a single browser session.
-        
+
         Raises RuntimeError if authentication has expired.
         """
         from edubag.gradescope.course import Course
@@ -794,8 +801,6 @@ class GradescopeClient(LMSClient):
                     for course_link in course_boxes:
                         course_url = course_link.get_attribute("href")
                         if course_url and course_url.startswith("/courses/"):
-                            # Extract course ID from URL
-                            course_id = course_url.split("/courses/")[1].split("/")[0]
                             # Navigate to course and extract details
                             full_url = f"{self.base_url}{course_url}"
                             page.goto(full_url)
@@ -810,15 +815,13 @@ class GradescopeClient(LMSClient):
                 # Fetch all courses for all terms
                 courses_for_term_divs = page.locator("div.courseList--coursesForTerm")
                 courses_count = courses_for_term_divs.count()
-                
+
                 for i in range(courses_count):
                     courses_container = courses_for_term_divs.nth(i)
                     course_boxes = courses_container.locator("a.courseBox").all()
                     for course_link in course_boxes:
                         course_url = course_link.get_attribute("href")
                         if course_url and course_url.startswith("/courses/"):
-                            # Extract course ID from URL
-                            course_id = course_url.split("/courses/")[1].split("/")[0]
                             # Navigate to course and extract details
                             full_url = f"{self.base_url}{course_url}"
                             page.goto(full_url)
@@ -833,23 +836,22 @@ class GradescopeClient(LMSClient):
             browser.close()
         return result
 
-    def fetch_assignments(self, course_id: str, headless: bool = True) -> list["Assignment"]:
+    def fetch_assignments(self, course_id: str, headless: bool = True) -> list[Assignment]:
         """Fetch list of assignments for a course.
-        
+
         Args:
             course_id: The Gradescope course ID
             headless: Whether to run the browser in headless mode
-            
+
         Returns:
             List of Assignment objects
-            
+
         Raises:
             RuntimeError: If authentication has expired
-            
+
         Note:
             This is a stub method that will be implemented with full Playwright automation.
         """
-        from edubag.gradescope.assignment import Assignment
 
         logger.warning("GradescopeClient.fetch_assignments() is not yet fully implemented (stub)")
         logger.info(f"Would fetch assignments for course: {course_id}")
