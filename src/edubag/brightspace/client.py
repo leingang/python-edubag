@@ -4,6 +4,7 @@ from pathlib import Path
 
 import platformdirs
 from loguru import logger
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from edubag.clients import LMSClient
@@ -151,19 +152,25 @@ class BrightspaceClient(LMSClient):
             # Navigate to Grades
             page.get_by_role("link", name="Grades").click()
             page.get_by_role("link", name="Enter Grades  selected").click()
+            page.wait_for_url("**/grades/admin/enter/user_list_view.d2l**", timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=30000)
 
             # Export gradebook
-            export_button = page.get_by_role("button", name="Export")
-            export_to_csv = page.get_by_role("button", name="Export to CSV")
+            export_to_csv = None
             for _ in range(3):
-                export_button.scroll_into_view_if_needed()
-                export_button.click()
                 try:
+                    export_button = page.get_by_role("button", name="Export")
+                    export_button.wait_for(state="visible", timeout=10000)
+                    export_button.scroll_into_view_if_needed()
+                    export_button.click()
+
+                    export_to_csv = page.get_by_role("button", name="Export to CSV")
                     export_to_csv.wait_for(state="visible", timeout=5000)
                     break
-                except Exception:
+                except PlaywrightError:
                     page.wait_for_timeout(1000)
-            export_to_csv.wait_for(state="visible", timeout=30000)
+            if export_to_csv is None:
+                raise RuntimeError("Export menu did not appear; please retry headed mode.")
             if not self._check_export_checkbox(
                 page,
                 name="PointsGrade",
