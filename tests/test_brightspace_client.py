@@ -2,7 +2,9 @@
 """Tests for brightspace client module."""
 
 import os
+import random
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -127,7 +129,7 @@ class TestBrightspaceClient:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             save_dir = Path(tmpdir)
-            paths = client.save_gradebook(course="555872", save_dir=save_dir, headless=headless)
+            paths = client.save_gradebook(course="540180", save_dir=save_dir, headless=headless)
             assert paths
             for path in paths:
                 assert path.exists()
@@ -148,7 +150,8 @@ class TestBrightspaceClient:
         for _ in range(10):
             with tempfile.TemporaryDirectory() as tmpdir:
                 save_dir = Path(tmpdir)
-                paths = client.save_gradebook(course="555872", save_dir=save_dir, headless=headless)
+                paths = client.save_gradebook(course="540180", save_dir=save_dir, headless=headless)
                 assert paths
                 for path in paths:
                     assert path.exists()
+            time.sleep(random.uniform(0.1, 5.0))
