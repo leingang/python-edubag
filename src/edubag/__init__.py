@@ -13,6 +13,7 @@ from edubag import (  # noqa: E402
     gmail,  # noqa: F401
     gradescope,  # noqa: F401
     brightspace,  # noqa: F401
+    edstem,  # noqa: F401
 )
 
 if __name__ == "__main__":
