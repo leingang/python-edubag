@@ -75,7 +75,7 @@ class EdstemClient(LMSClient):
             context = browser.new_context()
             page = context.new_page()
 
-            page.goto(self.base_url)
+            page.goto(self.base_url.rstrip("/") + "/login")
             page.wait_for_load_state("domcontentloaded", timeout=10000)
 
             if username is not None:
@@ -93,7 +93,7 @@ class EdstemClient(LMSClient):
                 print("Please enter your email and password in the browser window.")
 
             # Wait for successful login (redirect away from login page)
-            page.wait_for_url("**/courses**", timeout=60000)
+            page.wait_for_url("**/dashboard**", timeout=60000)
 
             context.storage_state(path=self.auth_state_path)
             logger.debug(f"Authentication state saved at {self.auth_state_path}")
