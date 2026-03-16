@@ -1,6 +1,9 @@
 """Module to automate interactions with the Brightspace learning platform."""
 
+import asyncio
+import threading
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import platformdirs
 from loguru import logger
@@ -8,6 +11,38 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from edubag.clients import LMSClient
+
+T = TypeVar("T")
+
+
+def _run_sync_in_thread(func: Callable[..., T], *args, **kwargs) -> T:
+    """Run a sync function in a separate thread to avoid asyncio event loop conflicts.
+    
+    This is needed on Python 3.13+ where Playwright's sync API detects if an event loop
+    is already running and raises an error. By running in a thread, we avoid the detection.
+    """
+    try:
+        asyncio.get_running_loop()
+        # Event loop is running, we need to run in a thread
+        result_container = []
+        exception_container = []
+        
+        def thread_wrapper():
+            try:
+                result_container.append(func(*args, **kwargs))
+            except Exception as e:
+                exception_container.append(e)
+        
+        thread = threading.Thread(target=thread_wrapper, daemon=False)
+        thread.start()
+        thread.join()
+        
+        if exception_container:
+            raise exception_container[0]
+        return result_container[0]
+    except RuntimeError:
+        # No event loop running, call directly
+        return func(*args, **kwargs)
 
 
 class BrightspaceClient(LMSClient):
@@ -54,47 +89,51 @@ class BrightspaceClient(LMSClient):
         """
         if username is None or password is None:
             headless = False
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context()
-            page = context.new_page()
+        
+        def _do_authenticate():
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=headless)
+                context = browser.new_context()
+                page = context.new_page()
 
-            page.goto(self.base_url)
+                page.goto(self.base_url)
 
-            # Wait for page to load and form to appear instead of URL (SAML can redirect)
-            page.wait_for_load_state("domcontentloaded", timeout=10000)
-            # Wait for the username input field to appear and be visible
-            page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
-            username_field = page.locator("input[type='email']")
-
-            if username is not None:
-                username_field.fill(username)
-                page.get_by_role("button", name="Next").click()
+                # Wait for page to load and form to appear instead of URL (SAML can redirect)
                 page.wait_for_load_state("domcontentloaded", timeout=10000)
-                page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
-                password_field = page.locator("input[type='password']")
+                # Wait for the username input field to appear and be visible
+                page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
+                username_field = page.locator("input[type='email']")
 
-                if password is not None:
-                    # Wait for password field to appear
-                    password_field.fill(password)
-                    page.get_by_role("button", name="Sign in").click()
-                    page.get_by_role("button", name="Approve with MFA (Duo)‎ You").click()
+                if username is not None:
+                    username_field.fill(username)
+                    page.get_by_role("button", name="Next").click()
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
+                    password_field = page.locator("input[type='password']")
+
+                    if password is not None:
+                        # Wait for password field to appear
+                        password_field.fill(password)
+                        page.get_by_role("button", name="Sign in").click()
+                        page.get_by_role("button", name="Approve with MFA (Duo)‎ You").click()
+                    else:
+                        # interactive mode: focus password field and wait for user to enter password
+                        password_field.click()
+                        print("Please enter your password in the browser window and complete MFA.")
                 else:
-                    # interactive mode: focus password field and wait for user to enter password
-                    password_field.click()
-                    print("Please enter your password in the browser window and complete MFA.")
-            else:
-                # interactive mode: focus username field and wait for user to enter credentials
-                username_field.click()
-                print("Please enter your username and password in the browser window, then complete MFA.")
+                    # interactive mode: focus username field and wait for user to enter credentials
+                    username_field.click()
+                    print("Please enter your username and password in the browser window, then complete MFA.")
 
-            # Wait for the Brightspace home page to load after successful login
-            page.wait_for_url("**/d2l/home**", timeout=60000)
+                # Wait for the Brightspace home page to load after successful login
+                page.wait_for_url("**/d2l/home**", timeout=60000)
 
-            context.storage_state(path=self.auth_state_path)
-            logger.debug(f"Authentication state saved at {self.auth_state_path}")
+                context.storage_state(path=self.auth_state_path)
+                logger.debug(f"Authentication state saved at {self.auth_state_path}")
 
-            browser.close()
+                browser.close()
+        
+        _run_sync_in_thread(_do_authenticate)
 
     @staticmethod
     def _check_export_checkbox(
@@ -129,92 +168,95 @@ class BrightspaceClient(LMSClient):
 
         Raises RuntimeError if authentication has expired.
         """
-        result_paths = []
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
-            page = context.new_page()
+        def _do_save_gradebook():
+            result_paths = []
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=headless)
+                context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
+                page = context.new_page()
 
-            # Navigate to the course page
-            # Determine if course is a full URL or just an ID
-            if course.startswith("http://") or course.startswith("https://"):
-                course_url = course
-            else:
-                course_url = f"{self.base_url}d2l/home/{course}"
-            page.goto(course_url)
+                # Navigate to the course page
+                # Determine if course is a full URL or just an ID
+                if course.startswith("http://") or course.startswith("https://"):
+                    course_url = course
+                else:
+                    course_url = f"{self.base_url}d2l/home/{course}"
+                page.goto(course_url)
 
-            # Check if we need to re-login
-            if "login" in page.url:
-                logger.error("Authentication session expired. Please re-authenticate.")
+                # Check if we need to re-login
+                if "login" in page.url:
+                    logger.error("Authentication session expired. Please re-authenticate.")
+                    browser.close()
+                    raise RuntimeError("Authentication session expired.")
+
+                # Navigate to Grades
+                page.get_by_role("link", name="Grades").click()
+                page.get_by_role("link", name="Enter Grades  selected").click()
+                page.wait_for_url("**/grades/admin/enter/user_list_view.d2l**", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=30000)
+
+                # Export gradebook
+                export_to_csv = None
+                for _ in range(3):
+                    try:
+                        export_button = page.get_by_role("button", name="Export")
+                        export_button.wait_for(state="visible", timeout=10000)
+                        export_button.scroll_into_view_if_needed()
+                        export_button.click()
+
+                        export_to_csv = page.get_by_role("button", name="Export to CSV")
+                        export_to_csv.wait_for(state="visible", timeout=5000)
+                        break
+                    except PlaywrightError:
+                        page.wait_for_timeout(1000)
+                if export_to_csv is None:
+                    raise RuntimeError("Export menu did not appear; please retry headed mode.")
+                if not self._check_export_checkbox(
+                    page,
+                    name="PointsGrade",
+                    labels=("Points grade", "Points Grade", "Points"),
+                ):
+                    logger.warning("Export option 'Points grade' not found.")
+                if not self._check_export_checkbox(page, name="LastName", labels=("Last Name",)):
+                    logger.warning("Export option 'Last Name' not found.")
+                if not self._check_export_checkbox(page, name="FirstName", labels=("First Name",)):
+                    logger.warning("Export option 'First Name' not found.")
+                if not self._check_export_checkbox(page, name="Email", labels=("Email",)):
+                    logger.warning("Export option 'Email' not found.")
+                if not self._check_export_checkbox(
+                    page,
+                    name="SectionMembership",
+                    labels=("Section Membership", "Section"),
+                ):
+                    logger.warning("Export option 'Section Membership' not found.")
+                if not self._check_export_checkbox(
+                    page,
+                    labels=("Select all rows", "Select All Rows"),
+                ):
+                    logger.warning("Export option 'Select all rows' not found.")
+                export_to_csv.scroll_into_view_if_needed()
+                export_to_csv.click()
+
+                with page.expect_download() as download_info:
+                    page.get_by_role("button", name="Download").click()
+                download = download_info.value
+
+                # Save the download
+                if save_dir is not None:
+                    save_dir.mkdir(parents=True, exist_ok=True)
+                    download_file_path = save_dir / download.suggested_filename
+                else:
+                    download_file_path = Path(download.suggested_filename)
+                logger.info(f"Downloading gradebook to {download_file_path}")
+                download.save_as(download_file_path)
+                result_paths.append(download_file_path)
+
+                page.get_by_role("button", name="Close").click()
+
                 browser.close()
-                raise RuntimeError("Authentication session expired.")
-
-            # Navigate to Grades
-            page.get_by_role("link", name="Grades").click()
-            page.get_by_role("link", name="Enter Grades  selected").click()
-            page.wait_for_url("**/grades/admin/enter/user_list_view.d2l**", timeout=30000)
-            page.wait_for_load_state("networkidle", timeout=30000)
-
-            # Export gradebook
-            export_to_csv = None
-            for _ in range(3):
-                try:
-                    export_button = page.get_by_role("button", name="Export")
-                    export_button.wait_for(state="visible", timeout=10000)
-                    export_button.scroll_into_view_if_needed()
-                    export_button.click()
-
-                    export_to_csv = page.get_by_role("button", name="Export to CSV")
-                    export_to_csv.wait_for(state="visible", timeout=5000)
-                    break
-                except PlaywrightError:
-                    page.wait_for_timeout(1000)
-            if export_to_csv is None:
-                raise RuntimeError("Export menu did not appear; please retry headed mode.")
-            if not self._check_export_checkbox(
-                page,
-                name="PointsGrade",
-                labels=("Points grade", "Points Grade", "Points"),
-            ):
-                logger.warning("Export option 'Points grade' not found.")
-            if not self._check_export_checkbox(page, name="LastName", labels=("Last Name",)):
-                logger.warning("Export option 'Last Name' not found.")
-            if not self._check_export_checkbox(page, name="FirstName", labels=("First Name",)):
-                logger.warning("Export option 'First Name' not found.")
-            if not self._check_export_checkbox(page, name="Email", labels=("Email",)):
-                logger.warning("Export option 'Email' not found.")
-            if not self._check_export_checkbox(
-                page,
-                name="SectionMembership",
-                labels=("Section Membership", "Section"),
-            ):
-                logger.warning("Export option 'Section Membership' not found.")
-            if not self._check_export_checkbox(
-                page,
-                labels=("Select all rows", "Select All Rows"),
-            ):
-                logger.warning("Export option 'Select all rows' not found.")
-            export_to_csv.scroll_into_view_if_needed()
-            export_to_csv.click()
-
-            with page.expect_download() as download_info:
-                page.get_by_role("button", name="Download").click()
-            download = download_info.value
-
-            # Save the download
-            if save_dir is not None:
-                save_dir.mkdir(parents=True, exist_ok=True)
-                download_file_path = save_dir / download.suggested_filename
-            else:
-                download_file_path = Path(download.suggested_filename)
-            logger.info(f"Downloading gradebook to {download_file_path}")
-            download.save_as(download_file_path)
-            result_paths.append(download_file_path)
-
-            page.get_by_role("button", name="Close").click()
-
-            browser.close()
-        return result_paths
+            return result_paths
+        
+        return _run_sync_in_thread(_do_save_gradebook)
 
     def save_gradebook(
         self,
@@ -267,76 +309,79 @@ class BrightspaceClient(LMSClient):
 
         Raises RuntimeError if authentication has expired.
         """
-        result_paths = []
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
-            page = context.new_page()
+        def _do_save_attendance():
+            result_paths = []
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=headless)
+                context = browser.new_context(storage_state=self.auth_state_path, accept_downloads=True)
+                page = context.new_page()
 
-            # Navigate to the course page
-            # Determine if course is a full URL or just an ID
-            if course.startswith("http://") or course.startswith("https://"):
-                course_url = course
-            else:
-                course_url = f"{self.base_url}d2l/home/{course}"
-            page.goto(course_url)
-
-            # Check if we need to re-login
-            if "login" in page.url:
-                logger.error("Authentication session expired. Please re-authenticate.")
-                browser.close()
-                raise RuntimeError("Authentication session expired.")
-
-            # Navigate to Attendance
-            page.get_by_role("button", name="More Tools").click()
-            page.get_by_role("link", name="Attendance").click()
-            page.wait_for_load_state("domcontentloaded", timeout=10000)
-
-            # Exit early if there are no attendance registers available
-            empty_state = page.locator(".empty-state-container").first
-            if empty_state.is_visible():
-                logger.info("No attendance registers available; nothing to download.")
-                browser.close()
-                return result_paths
-
-            # Process each attendance register
-            attendance_links = page.get_by_title("View attendance data in ").all()
-            if not attendance_links:
-                logger.info("No attendance registers found; nothing to download.")
-                browser.close()
-                return result_paths
-            for loc in attendance_links:
-                loc.click()
-                page.wait_for_load_state("domcontentloaded", timeout=10000)
-                # Get the attendance name from the h1 heading
-                attendance_name = page.locator("h1").inner_text()
-                logger.info(f"Processing {attendance_name}")
-                logger.debug(f"Processing attendance register at {page.url}")
-                page.get_by_role("button", name="Export All Data").click()
-
-                with page.expect_download() as download2_info:
-                    # Download link lives inside the export dialog iframe; target it directly
-                    iframe = page.frame_locator("iframe[title='Export Attendance Data']").first
-                    download_link = iframe.locator(".dfl a").first
-                    download_link.wait_for(state="visible", timeout=10000)
-                    download_link.click()
-                download2 = download2_info.value
-
-                # Save the download
-                if save_dir is not None:
-                    save_dir.mkdir(parents=True, exist_ok=True)
-                    download_file_path = save_dir / download2.suggested_filename
+                # Navigate to the course page
+                # Determine if course is a full URL or just an ID
+                if course.startswith("http://") or course.startswith("https://"):
+                    course_url = course
                 else:
-                    download_file_path = Path(download2.suggested_filename)
-                logger.info(f"Downloading attendance register to {download_file_path}")
-                download2.save_as(download_file_path)
-                result_paths.append(download_file_path)
+                    course_url = f"{self.base_url}d2l/home/{course}"
+                page.goto(course_url)
 
-                page.get_by_role("button", name="Close").click()
-                page.get_by_role("button", name="Done").click()
+                # Check if we need to re-login
+                if "login" in page.url:
+                    logger.error("Authentication session expired. Please re-authenticate.")
+                    browser.close()
+                    raise RuntimeError("Authentication session expired.")
 
-            browser.close()
-        return result_paths
+                # Navigate to Attendance
+                page.get_by_role("button", name="More Tools").click()
+                page.get_by_role("link", name="Attendance").click()
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+
+                # Exit early if there are no attendance registers available
+                empty_state = page.locator(".empty-state-container").first
+                if empty_state.is_visible():
+                    logger.info("No attendance registers available; nothing to download.")
+                    browser.close()
+                    return result_paths
+
+                # Process each attendance register
+                attendance_links = page.get_by_title("View attendance data in ").all()
+                if not attendance_links:
+                    logger.info("No attendance registers found; nothing to download.")
+                    browser.close()
+                    return result_paths
+                for loc in attendance_links:
+                    loc.click()
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    # Get the attendance name from the h1 heading
+                    attendance_name = page.locator("h1").inner_text()
+                    logger.info(f"Processing {attendance_name}")
+                    logger.debug(f"Processing attendance register at {page.url}")
+                    page.get_by_role("button", name="Export All Data").click()
+
+                    with page.expect_download() as download2_info:
+                        # Download link lives inside the export dialog iframe; target it directly
+                        iframe = page.frame_locator("iframe[title='Export Attendance Data']").first
+                        download_link = iframe.locator(".dfl a").first
+                        download_link.wait_for(state="visible", timeout=10000)
+                        download_link.click()
+                    download2 = download2_info.value
+
+                    # Save the download
+                    if save_dir is not None:
+                        save_dir.mkdir(parents=True, exist_ok=True)
+                        download_file_path = save_dir / download2.suggested_filename
+                    else:
+                        download_file_path = Path(download2.suggested_filename)
+                    logger.info(f"Downloading attendance register to {download_file_path}")
+                    download2.save_as(download_file_path)
+                    result_paths.append(download_file_path)
+
+                    page.get_by_role("button", name="Close").click()
+                    page.get_by_role("button", name="Done").click()
+
+                browser.close()
+            return result_paths
+        
+        return _run_sync_in_thread(_do_save_attendance)
 
     def save_attendance(
         self,
