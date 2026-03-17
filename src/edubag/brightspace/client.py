@@ -204,6 +204,16 @@ class BrightspaceClient(LMSClient):
                         export_button.scroll_into_view_if_needed()
                         export_button.click()
 
+                        page.get_by_role("button", name="Sections").click()
+                        clear_button = page.get_by_role("button", name="Clear").first
+                        if clear_button.count() > 0:
+                            try:
+                                if clear_button.is_enabled():
+                                    clear_button.click()
+                            except PlaywrightError:
+                                pass
+                        page.get_by_role("button", name="Apply").click()
+
                         export_to_csv = page.get_by_role("button", name="Export to CSV")
                         export_to_csv.wait_for(state="visible", timeout=5000)
                         break
