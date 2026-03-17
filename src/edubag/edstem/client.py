@@ -179,7 +179,7 @@ class EdstemClient(LMSClient):
                     logger.info("Re-authenticating...")
                     self.auth_state_path.unlink(missing_ok=True)
                     self.authenticate(headless=headless)
-                    continue
                 else:
                     logger.error(f"Max retries exceeded. RuntimeError: {e}")
                     raise
+        return []
