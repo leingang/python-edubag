@@ -54,6 +54,18 @@ class EngagementAggregator:
         self.merged_data: Optional[pd.DataFrame] = None
         self.validation_report: Dict[str, Any] = {}
 
+    @staticmethod
+    def _strip_column_metadata(col: str) -> str:
+        """Strip Brightspace column metadata suffix from a column name.
+
+        Brightspace column names include a metadata block, e.g.:
+            "Pre-Quiz Completion Rate Points Grade <Numeric MaxPoints:28 Weight:31.46 ...>"
+        This method returns just the text before the first "<", stripped of
+        trailing whitespace, so formulas can match on stable base names regardless
+        of MaxPoints, Weight, or CategoryWeight changing over time.
+        """
+        return col.split("<")[0].rstrip()
+
     def add_source(self, name: str, source: DataSource) -> None:
         """Add a data source to the aggregator.
         
@@ -78,6 +90,13 @@ class EngagementAggregator:
         # Start with base gradebook if provided, otherwise first source
         if self.base_gradebook is not None:
             merged = self.base_gradebook.grades.copy()
+            # Strip Brightspace metadata suffixes from column names so formulas
+            # can reference stable base names (e.g. "Pre-Quiz Completion Rate Points Grade"
+            # instead of "Pre-Quiz Completion Rate Points Grade <Numeric MaxPoints:28 ...>").
+            merged.columns = [
+                self._strip_column_metadata(c) if c != "Username" else c
+                for c in merged.columns
+            ]
             logger.info(f"Starting with base gradebook: {len(merged)} students")
         else:
             first_source_name = list(self.sources.keys())[0]
@@ -89,10 +108,11 @@ class EngagementAggregator:
             # Select only Username and metric columns
             source_df = source.data.copy()
             
-            # Rename columns to avoid conflicts, except Username
+            # Rename columns to avoid conflicts, except Username.
+            # Strip Brightspace metadata suffixes so the prefixed names are stable.
             rename_map = {
-                col: f"{name}_{col}" 
-                for col in source_df.columns 
+                col: f"{name}_{self._strip_column_metadata(col)}"
+                for col in source_df.columns
                 if col != "Username"
             }
             source_df = source_df.rename(columns=rename_map)
@@ -165,16 +185,23 @@ class EngagementAggregator:
                 eval_formula = formula
                 
                 # First pass: Handle backtick-quoted column names (for columns with special chars)
-                # Do this first to avoid double-processing
+                # Do this first to avoid double-processing.
+                # Columns in the merged df have had Brightspace metadata suffixes stripped, so
+                # we build the replacement using the stripped name.  We also accept the stripped
+                # form in the formula itself (user may write either variant).
                 for source_name in self.sources.keys():
                     source_cols = [
                         c for c in self.sources[source_name].data.columns 
                         if c != "Username"
                     ]
                     for col in source_cols:
-                        backtick_col = f"`{col}`"
-                        backtick_replacement = f"`{source_name}_{col}`"
-                        eval_formula = eval_formula.replace(backtick_col, backtick_replacement)
+                        stripped_col = self._strip_column_metadata(col)
+                        backtick_replacement = f"`{source_name}_{stripped_col}`"
+                        # Match the original full name (with metadata)
+                        eval_formula = eval_formula.replace(f"`{col}`", backtick_replacement)
+                        # Also match the already-stripped form
+                        if stripped_col != col:
+                            eval_formula = eval_formula.replace(f"`{stripped_col}`", backtick_replacement)
                 
                 # Second pass: Handle bare column names (only those not in backticks)
                 # This is trickier - need to avoid replacing already-processed backtick names
@@ -222,9 +249,11 @@ class EngagementAggregator:
                     df[col_name] = 0.0
                     
             elif "column" in col_config:
-                # Simple column mapping from a source
+                # Simple column mapping from a source.
+                # Strip metadata suffix from source_col so it matches the normalized
+                # column name produced by merge_sources().
                 source_name = col_config["source"]
-                source_col = col_config["column"]
+                source_col = self._strip_column_metadata(col_config["column"])
                 merged_col = f"{source_name}_{source_col}"
                 
                 if merged_col in df.columns:
@@ -338,12 +367,18 @@ class EngagementAggregator:
 
         # Keep only Username and configured columns (plus base gradebook columns if present)
         if self.base_gradebook is not None:
-            # Start with base gradebook columns
-            keep_cols = list(self.base_gradebook.grades.columns)
-            # Add configured columns that aren't already in base
+            # Start with base gradebook columns, stripping metadata suffixes so they
+            # match the normalized names in df (which went through merge_sources).
+            keep_cols = [
+                self._strip_column_metadata(c) if c != "Username" else c
+                for c in self.base_gradebook.grades.columns
+            ]
+            # Add configured columns that aren't already in base.
+            # Strip metadata from config keys too, so both forms are accepted.
             for col in self.config.keys():
-                if col not in keep_cols and col in df.columns:
-                    keep_cols.append(col)
+                stripped_col = self._strip_column_metadata(col)
+                if stripped_col not in keep_cols and stripped_col in df.columns:
+                    keep_cols.append(stripped_col)
         else:
             # Just Username and configured columns
             keep_cols = ["Username"] + [
