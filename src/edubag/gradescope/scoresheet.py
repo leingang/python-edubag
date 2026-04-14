@@ -158,15 +158,27 @@ class VersionedScoresheet(Scoresheet):
         name = zip_path.name[: zip_path.name.rfind("_Version_Set_Scores.zip")].replace(
             "_", " "
         )
-        dfs = {}
-        for csv_path in version_csvs_from(zip_path):
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        frames = []
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            for csv_path in version_csvs_from(zip_path):
                 with zip_ref.open(str(csv_path)) as f:
                     ss = Scoresheet.from_csv(
                         f, drop_missing=True, filename=str(csv_path)
                     )
-                    dfs[ss.name] = ss.scores
-        df = pd.concat(dfs.values(), keys=dfs.keys())
-        df = df.reset_index(level=0)
-        df = df.rename(columns={"level_0": "Version"})
+                    version_df = ss.scores.copy()
+                    # Drop all-NA columns before concat to keep pandas dtype
+                    # inference stable across versions.
+                    version_df = version_df.dropna(axis=1, how="all").copy()
+
+                    # Avoid pandas concat FutureWarning for empty/all-NA entries.
+                    if version_df.empty or version_df.dropna(axis=0, how="all").empty:
+                        continue
+
+                    version_df["Version"] = ss.name
+                    frames.append(version_df)
+
+        if frames:
+            df = pd.concat(frames, ignore_index=True)
+        else:
+            df = pd.DataFrame(columns=["Version"])
         return cls(name=name, scores=df)
