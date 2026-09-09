@@ -214,17 +214,32 @@ class BrightspaceClient(LMSClient):
 
         Returns True if a checkbox was found and checked.
         """
+        locator = None
         if name:
             name_locator = page.locator(f"input[name='{name}']")
             if name_locator.count() > 0:
-                name_locator.first.check(force=True)
-                return True
-        for label in labels:
-            label_locator = page.get_by_role("checkbox", name=label, exact=False)
-            if label_locator.count() > 0:
-                label_locator.first.check(force=True)
-                return True
-        return False
+                locator = name_locator.first
+        if locator is None:
+            for label in labels:
+                label_locator = page.get_by_role("checkbox", name=label, exact=False)
+                if label_locator.count() > 0:
+                    locator = label_locator.first
+                    break
+        if locator is None:
+            return False
+        try:
+            locator.check(force=True)
+        except PlaywrightError:
+            # Some D2L checkboxes (e.g. the gradebook export's "Select all
+            # rows") are driven by a custom onclick handler rather than plain
+            # native toggling, and Playwright's coordinate-based synthetic
+            # click sometimes fails to trigger it ("did not change its
+            # state"). Fall back to invoking the element's own click()
+            # method, which runs the same activation behavior (including the
+            # onclick handler) without relying on hit-testing at a specific
+            # screen position.
+            locator.evaluate("el => { if (!el.checked) el.click(); }")
+        return True
 
     def _save_gradebook_session(
         self,
