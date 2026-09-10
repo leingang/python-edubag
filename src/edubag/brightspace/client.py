@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -103,6 +104,66 @@ class BrightspaceClient(LMSClient):
             return True
         return False
 
+    @staticmethod
+    def _wait_for_login_form_or_landing(page, timeout_ms: int = 20000) -> bool:
+        """Poll until either the SSO email field or the D2L landing page appears.
+
+        A trusted browser/session can cause SSO to redirect straight to the
+        Brightspace landing page without ever showing a login form.
+
+        Returns True if the landing page appeared first (fully trusted session,
+        no login form was shown at all).
+        """
+        deadline = time.monotonic() + (timeout_ms / 1000)
+        brightspace_url = re.compile(r"https://brightspace\.nyu\.edu/d2l/.*")
+        email_field = page.locator("input[type='email']")
+
+        while time.monotonic() < deadline:
+            if brightspace_url.match(page.url):
+                return True
+            if email_field.count() > 0 and email_field.first.is_visible():
+                return False
+            page.wait_for_timeout(250)
+
+        raise PlaywrightTimeoutError(
+            "Timed out waiting for either the SSO login form or the Brightspace landing page"
+        )
+
+    @staticmethod
+    def _notify_duo_push_sent() -> None:
+        """Fire a local desktop notification so a Duo push isn't missed."""
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'display notification "Approve the push in Duo Mobile to continue." '
+                    'with title "Brightspace login needs Duo approval" sound name "Ping"',
+                ],
+                check=False,
+                timeout=5,
+            )
+        except OSError:
+            logger.debug("Could not send desktop notification for Duo push (osascript unavailable).")
+
+    @staticmethod
+    def _approve_duo_if_challenged(page, timeout_ms: int = 8000) -> bool:
+        """Click the Duo push-approval button only if NYU actually challenges for MFA.
+
+        A trusted browser/session can skip the Duo challenge entirely, in which
+        case this button never appears. Returns True if a challenge was found
+        and the push was triggered.
+        """
+        duo_button = page.get_by_role("button", name="Approve with MFA (Duo)‎ You")
+        try:
+            duo_button.wait_for(state="visible", timeout=timeout_ms)
+        except PlaywrightTimeoutError:
+            return False
+
+        duo_button.click()
+        BrightspaceClient._notify_duo_push_sent()
+        return True
+
     def _wait_for_brightspace_landing(self, page, timeout_ms: int = 120000) -> None:
         """Wait for Brightspace landing while opportunistically handling KMSI prompt."""
         deadline = time.monotonic() + (timeout_ms / 1000)
@@ -134,8 +195,6 @@ class BrightspaceClient(LMSClient):
                 if attempt < max_retries:
                     logger.warning(f"RuntimeError: {e} Authentication may have expired.")
                     logger.info("Re-authenticating...")
-                    if self.auth_state_path.exists():
-                        self.auth_state_path.unlink()
                     self.authenticate(headless=headless)
                     continue
 
@@ -161,37 +220,49 @@ class BrightspaceClient(LMSClient):
         def _do_authenticate():
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=headless)
-                context = browser.new_context()
+                if self.auth_state_path.exists():
+                    # Reuse any cached cookies (e.g. a persistent Microsoft/Duo
+                    # "trust this browser" cookie) so a trusted browser can skip
+                    # straight past the login form and/or the Duo challenge
+                    # instead of being forced through both on every re-auth.
+                    context = browser.new_context(storage_state=self.auth_state_path)
+                else:
+                    context = browser.new_context()
                 page = context.new_page()
 
                 page.goto(self.base_url)
 
                 # Wait for page to load and form to appear instead of URL (SAML can redirect)
                 page.wait_for_load_state("domcontentloaded", timeout=10000)
-                # Wait for the username input field to appear and be visible
-                page.locator("input[type='email']").wait_for(state="visible", timeout=10000)
-                username_field = page.locator("input[type='email']")
 
-                if username is not None:
-                    username_field.fill(username)
-                    page.get_by_role("button", name="Next").click()
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
-                    password_field = page.locator("input[type='password']")
+                # A trusted session may redirect straight to the Brightspace
+                # landing page without ever showing the login form.
+                already_landed = self._wait_for_login_form_or_landing(page)
 
-                    if password is not None:
-                        # Wait for password field to appear
-                        password_field.fill(password)
-                        page.get_by_role("button", name="Sign in").click()
-                        page.get_by_role("button", name="Approve with MFA (Duo)‎ You").click()
+                if not already_landed:
+                    username_field = page.locator("input[type='email']")
+
+                    if username is not None:
+                        username_field.fill(username)
+                        page.get_by_role("button", name="Next").click()
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        page.locator("input[type='password']").wait_for(state="visible", timeout=10000)
+                        password_field = page.locator("input[type='password']")
+
+                        if password is not None:
+                            # Wait for password field to appear
+                            password_field.fill(password)
+                            page.get_by_role("button", name="Sign in").click()
+                            # A trusted session may skip the Duo challenge entirely.
+                            self._approve_duo_if_challenged(page)
+                        else:
+                            # interactive mode: focus password field and wait for user to enter password
+                            password_field.click()
+                            print("Please enter your password in the browser window and complete MFA.")
                     else:
-                        # interactive mode: focus password field and wait for user to enter password
-                        password_field.click()
-                        print("Please enter your password in the browser window and complete MFA.")
-                else:
-                    # interactive mode: focus username field and wait for user to enter credentials
-                    username_field.click()
-                    print("Please enter your username and password in the browser window, then complete MFA.")
+                        # interactive mode: focus username field and wait for user to enter credentials
+                        username_field.click()
+                        print("Please enter your username and password in the browser window, then complete MFA.")
 
                 # Wait for Brightspace landing after SSO/MFA and optional KMSI interstitial.
                 self._wait_for_brightspace_landing(page, timeout_ms=120000)
